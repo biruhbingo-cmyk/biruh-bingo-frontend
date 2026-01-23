@@ -192,41 +192,43 @@ export default function CardSelection({ userId }: { userId: string }) {
 
         {/* BINGO Card Table - Shows below the grid */}
         {selectedCard ? (
-          <div className="bg-white rounded-lg p-4 mb-24">
-            <div className="grid grid-cols-5 gap-1 mb-2">
-              {(['B', 'I', 'N', 'G', 'O'] as const).map((letter, idx) => {
-                const colors = ['bg-pink-500', 'bg-green-400', 'bg-blue-600', 'bg-orange-500', 'bg-red-500'];
-                return (
-                  <div
-                    key={letter}
-                    className={`text-center font-bold text-sm py-2 ${colors[idx]} text-white rounded-t`}
-                  >
-                    {letter}
-                  </div>
-                );
-              })}
-            </div>
-
-            {[0, 1, 2, 3, 4].map((row) => (
-              <div key={row} className="grid grid-cols-5 gap-1">
-                {(['B', 'I', 'N', 'G', 'O'] as const).map((letter) => {
-                  const num = selectedCard.numbers[letter][row];
-                  // Check if this is the center cell (row 2, column N) - should be empty for 24 number cards
-                  const isCenter = row === 2 && letter === 'N';
-                  
+          <div className="flex justify-center mb-24">
+            <div className="bg-white rounded-lg p-2 max-w-[200px]">
+              <div className="grid grid-cols-5 gap-0.5 mb-1">
+                {(['B', 'I', 'N', 'G', 'O'] as const).map((letter, idx) => {
+                  const colors = ['bg-pink-500', 'bg-green-400', 'bg-blue-600', 'bg-orange-500', 'bg-red-500'];
                   return (
                     <div
-                      key={`${letter}-${row}`}
-                      className={`aspect-square rounded border-2 border-gray-300 flex items-center justify-center font-semibold text-sm ${
-                        isCenter ? 'bg-gray-200 text-gray-400' : 'bg-white text-black'
-                      }`}
+                      key={letter}
+                      className={`text-center font-bold text-xs py-1 ${colors[idx]} text-white rounded-t`}
                     >
-                      {isCenter ? '#' : num}
+                      {letter}
                     </div>
                   );
                 })}
               </div>
-            ))}
+
+              {[0, 1, 2, 3, 4].map((row) => (
+                <div key={row} className="grid grid-cols-5 gap-0.5">
+                  {(['B', 'I', 'N', 'G', 'O'] as const).map((letter) => {
+                    const num = selectedCard.numbers[letter][row];
+                    // Check if this is the center cell (row 2, column N) - should be empty for 24 number cards
+                    const isCenter = row === 2 && letter === 'N';
+                    
+                    return (
+                      <div
+                        key={`${letter}-${row}`}
+                        className={`aspect-square rounded border border-gray-300 flex items-center justify-center font-semibold text-xs ${
+                          isCenter ? 'bg-gray-200 text-gray-400' : 'bg-white text-black'
+                        }`}
+                      >
+                        {isCenter ? '#' : num}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
           </div>
         ) : (
           <div className="bg-white/10 rounded-lg p-8 mb-24 text-center text-gray-400">
