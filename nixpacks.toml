@@ -12,5 +12,5 @@ cmds = [
 ]
 
 [start]
-cmd = "npm start"
+cmd = "node .next/standalone/server.js"
 
