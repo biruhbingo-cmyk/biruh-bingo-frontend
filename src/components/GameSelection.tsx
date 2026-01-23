@@ -46,12 +46,30 @@ export default function GameSelection({ userId }: { userId: string }) {
 
   const fetchUserBalance = async () => {
     try {
+      console.log('Fetching balance for userId:', userId);
       const response = await axios.get(`${API_URL}/api/user/${userId}`);
-      const userBalance = response.data.user.balance || 0;
+      console.log('Balance response:', response.data);
+      const userBalance = response.data?.user?.balance ?? 0;
+      console.log('Setting balance to:', userBalance);
       setBalance(userBalance);
       setStoreBalance(userBalance);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching balance:', error);
+      console.error('Error details:', error.response?.data || error.message);
+      // Try alternative endpoint if userId might be telegramId
+      if (error.response?.status === 404) {
+        try {
+          const token = new URLSearchParams(window.location.search).get('token');
+          if (token) {
+            const telegramResponse = await axios.get(`${API_URL}/api/user/telegram/${token}`);
+            const userBalance = telegramResponse.data?.user?.balance ?? 0;
+            setBalance(userBalance);
+            setStoreBalance(userBalance);
+          }
+        } catch (telegramError) {
+          console.error('Error fetching by telegram ID:', telegramError);
+        }
+      }
     }
   };
 
@@ -121,7 +139,14 @@ export default function GameSelection({ userId }: { userId: string }) {
             return (
               <div
                 key={type}
-                className="bg-[#1e3a5f] rounded-lg p-4 flex items-center justify-between"
+                onClick={() => {
+                  if (canJoin) {
+                    handleJoinGame(type);
+                  }
+                }}
+                className={`bg-[#1e3a5f] rounded-lg p-4 flex items-center justify-between cursor-pointer transition-all ${
+                  canJoin ? 'hover:bg-[#254a75] active:scale-[0.98]' : 'opacity-60'
+                }`}
               >
                 {/* Left Side */}
                 <div className="flex-1">
@@ -145,9 +170,8 @@ export default function GameSelection({ userId }: { userId: string }) {
                 </div>
 
                 {/* Right Side - Join Button */}
-                <button
-                  onClick={() => handleJoinGame(type)}
-                  disabled={!canJoin}
+                <div
+                  onClick={(e) => e.stopPropagation()}
                   className={`px-6 py-3 rounded-lg font-semibold flex items-center gap-2 transition-all ${
                     canJoin
                       ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600'
@@ -161,7 +185,7 @@ export default function GameSelection({ userId }: { userId: string }) {
                     <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V5V3z" />
                   </svg>
                   <span>ይግቡ</span>
-                </button>
+                </div>
               </div>
             );
           })
@@ -170,7 +194,6 @@ export default function GameSelection({ userId }: { userId: string }) {
 
       {/* Footer */}
       <div className="fixed bottom-0 left-0 right-0 bg-[#0a1929] border-t border-[#1e3a5f] p-4 text-center">
-        <p className="text-white text-sm mb-1">@CheersBingoBot</p>
         <p className="text-gray-400 text-xs">
           ውጤት ውድድሩ ከሚጀምርበት ሳምንት ጀምሮ በየእለቱ የምናሳውቅ
         </p>

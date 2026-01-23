@@ -16,6 +16,8 @@ function HomeContent() {
     const userIdParam = searchParams.get('userId');
     const token = searchParams.get('token');
     
+    console.log('Page params - userId:', userIdParam, 'token:', token);
+    
     if (userIdParam) {
       setUserId(userIdParam);
     }
