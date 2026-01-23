@@ -33,7 +33,7 @@ function HomeContent() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600">
+    <main className="min-h-screen bg-[#0a1929]">
       {currentView === 'selection' && <GameSelection userId={userId} />}
       {currentView === 'cards' && <CardSelection userId={userId} />}
       {currentView === 'play' && <GamePlay userId={userId} />}

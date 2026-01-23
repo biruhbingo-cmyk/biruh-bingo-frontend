@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useGameStore } from '@/store/gameStore';
-import { useSocket } from '@/hooks/useSocket';
 
 interface Game {
   gameType: number;
@@ -23,11 +22,16 @@ export default function GameSelection({ userId }: { userId: string }) {
   const { setCurrentView, setSelectedGameType, setBalance: setStoreBalance } = useGameStore();
 
   useEffect(() => {
-    fetchGames();
-    fetchUserBalance();
-    const interval = setInterval(fetchGames, 5000); // Update every 5 seconds
-    return () => clearInterval(interval);
-  }, []);
+    if (userId) {
+      fetchGames();
+      fetchUserBalance();
+      const interval = setInterval(() => {
+        fetchGames();
+        fetchUserBalance();
+      }, 5000); // Update every 5 seconds
+      return () => clearInterval(interval);
+    }
+  }, [userId]);
 
   const fetchGames = async () => {
     try {
@@ -43,8 +47,9 @@ export default function GameSelection({ userId }: { userId: string }) {
   const fetchUserBalance = async () => {
     try {
       const response = await axios.get(`${API_URL}/api/user/${userId}`);
-      setBalance(response.data.user.balance);
-      setStoreBalance(response.data.user.balance);
+      const userBalance = response.data.user.balance || 0;
+      setBalance(userBalance);
+      setStoreBalance(userBalance);
     } catch (error) {
       console.error('Error fetching balance:', error);
     }
@@ -62,82 +67,114 @@ export default function GameSelection({ userId }: { userId: string }) {
 
   const gameTypes = [5, 7, 10, 20, 50, 100, 200];
 
+  const getStatusLabel = (status: string | undefined) => {
+    if (status === 'playing') return 'በመጫወት ላይ';
+    if (status === 'waiting') return 'ክፍት';
+    return 'ክፍት';
+  };
+
+  const getStatusColor = (status: string | undefined) => {
+    if (status === 'playing') return 'bg-red-500';
+    return 'bg-green-500';
+  };
+
   return (
-    <div className="min-h-screen p-4">
-      {/* Header with Back Button and Balance */}
-      <div className="flex justify-between items-center mb-6 text-white">
-        <button
-          onClick={() => window.history.back()}
-          className="px-4 py-2 bg-white/20 rounded-lg backdrop-blur-sm"
-        >
-          ← Back
-        </button>
-        <div className="text-lg font-bold">
-          Balance: {balance} birr
+    <div className="min-h-screen bg-[#0a1929] text-white">
+      {/* Header */}
+      <div className="bg-[#132f4c] px-4 py-3 flex items-center justify-between border-b border-[#1e3a5f]">
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl font-bold text-white">Cheers Bingo</h1>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 bg-yellow-500/20 px-3 py-1.5 rounded-lg">
+            <svg className="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M4 4a2 2 0 00-2 2v1a16.94 16.94 0 0012 6 16.94 16.94 0 0012-6V6a2 2 0 00-2-2H4z" />
+              <path fillRule="evenodd" d="M18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z" clipRule="evenodd" />
+            </svg>
+            <span className="text-yellow-400 font-semibold">{balance.toFixed(2)} ETB</span>
+          </div>
+          <button className="text-gray-400 hover:text-white">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+            </svg>
+          </button>
+          <button className="text-gray-400 hover:text-white">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
       </div>
 
       {/* Game List */}
-      <div className="space-y-4">
+      <div className="p-4 space-y-3 pb-32">
         {loading ? (
-          <div className="text-center text-white">Loading games...</div>
+          <div className="text-center text-white py-8">Loading games...</div>
         ) : (
           gameTypes.map((type) => {
             const game = games.find((g) => g.gameType === type);
-            const canJoin = balance >= type && game && game.playerCount > 0;
+            const status = game?.status || 'waiting';
+            const playerCount = game?.playerCount || 0;
+            const prize = game?.potentialWin || 0;
+            const canJoin = balance >= type && playerCount > 0;
 
             return (
               <div
                 key={type}
-                className="bg-white/10 backdrop-blur-sm rounded-xl p-6 text-white"
+                className="bg-[#1e3a5f] rounded-lg p-4 flex items-center justify-between"
               >
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-2xl font-bold">{type} birr Game</h2>
-                  <span
-                    className={`px-3 py-1 rounded-full text-sm ${
-                      game?.status === 'playing'
-                        ? 'bg-red-500'
-                        : game?.status === 'waiting'
-                        ? 'bg-green-500'
-                        : 'bg-gray-500'
-                    }`}
-                  >
-                    {game?.status || 'Closed'}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <p className="text-sm opacity-75">Players</p>
-                    <p className="text-xl font-semibold">{game?.playerCount || 0}</p>
+                {/* Left Side */}
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className="text-xl font-bold text-white">{type} ብር</span>
+                    <span className={`${getStatusColor(status)} text-white text-xs px-2 py-1 rounded`}>
+                      {getStatusLabel(status)}
+                    </span>
                   </div>
-                  <div>
-                    <p className="text-sm opacity-75">Potential Win</p>
-                    <p className="text-xl font-semibold">{game?.potentialWin || 0} birr</p>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-1.5">
+                      <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
+                      </svg>
+                      <span className="text-sm text-gray-300">{playerCount > 0 ? playerCount : '-'}</span>
+                    </div>
+                    <div className="bg-yellow-500/20 text-yellow-400 text-xs px-2 py-1 rounded">
+                      {prize > 0 ? `${prize} ብር ደራሽ` : '- ብር ደራሽ'}
+                    </div>
                   </div>
                 </div>
 
+                {/* Right Side - Join Button */}
                 <button
                   onClick={() => handleJoinGame(type)}
-                  disabled={!canJoin || balance < type}
-                  className={`w-full py-3 rounded-lg font-semibold transition-all ${
-                    canJoin && balance >= type
-                      ? 'bg-green-500 hover:bg-green-600 text-white'
-                      : 'bg-gray-500 text-gray-300 cursor-not-allowed'
+                  disabled={!canJoin}
+                  className={`px-6 py-3 rounded-lg font-semibold flex items-center gap-2 transition-all ${
+                    canJoin
+                      ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600'
+                      : 'bg-gray-600 text-gray-400 cursor-not-allowed'
                   }`}
                 >
-                  {balance < type
-                    ? 'Insufficient Balance'
-                    : game?.playerCount === 0
-                    ? 'No Players'
-                    : 'Get In'}
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
+                  </svg>
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V5V3z" />
+                  </svg>
+                  <span>ይግቡ</span>
                 </button>
               </div>
             );
           })
         )}
       </div>
+
+      {/* Footer */}
+      <div className="fixed bottom-0 left-0 right-0 bg-[#0a1929] border-t border-[#1e3a5f] p-4 text-center">
+        <p className="text-white text-sm mb-1">@CheersBingoBot</p>
+        <p className="text-gray-400 text-xs">
+          ውጤት ውድድሩ ከሚጀምርበት ሳምንት ጀምሮ በየእለቱ የምናሳውቅ
+        </p>
+      </div>
     </div>
   );
 }
-
