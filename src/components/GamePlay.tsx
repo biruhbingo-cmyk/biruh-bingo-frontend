@@ -235,14 +235,17 @@ export default function GamePlay({ userId }: { userId: string }) {
       {/* Bingo Card */}
       <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 mb-4">
         <div className="grid grid-cols-5 gap-2 mb-4">
-          {(['B', 'I', 'N', 'G', 'O'] as const).map((letter) => (
-            <div
-              key={letter}
-              className="text-center font-bold text-lg py-2 bg-blue-500 rounded"
-            >
-              {letter}
-            </div>
-          ))}
+          {(['B', 'I', 'N', 'G', 'O'] as const).map((letter, idx) => {
+            const colors = ['bg-pink-500', 'bg-green-400', 'bg-blue-600', 'bg-orange-500', 'bg-red-500'];
+            return (
+              <div
+                key={letter}
+                className={`text-center font-bold text-lg py-2 ${colors[idx]} text-white rounded`}
+              >
+                {letter}
+              </div>
+            );
+          })}
         </div>
 
         {[0, 1, 2, 3, 4].map((row) => (
@@ -253,20 +256,25 @@ export default function GamePlay({ userId }: { userId: string }) {
               const drawn = isNumberDrawn(num);
               const canClick = gameStatus === 'playing' && drawn && !marked;
 
+              // Check if this is the center cell (row 2, column N) - should be empty for 24 number cards
+              const isCenter = row === 2 && letter === 'N';
+              
               return (
                 <button
                   key={`${letter}-${row}`}
                   onClick={() => canClick && handleNumberClick(num)}
-                  disabled={!canClick}
+                  disabled={!canClick || isCenter}
                   className={`aspect-square rounded-lg border-2 font-semibold transition-all ${
-                    marked
+                    isCenter
+                      ? 'bg-gray-200 border-gray-300 text-gray-400 cursor-not-allowed'
+                      : marked
                       ? 'bg-black text-white border-black'
                       : drawn
-                      ? 'bg-red-500 text-white border-red-600'
+                      ? 'bg-white/20 border-red-500 border-2 text-white'
                       : 'bg-white/20 border-white/30 text-white'
-                  } ${canClick ? 'cursor-pointer hover:scale-105' : 'cursor-not-allowed'}`}
+                  } ${canClick && !isCenter ? 'cursor-pointer hover:scale-105' : 'cursor-not-allowed'}`}
                 >
-                  {num}
+                  {isCenter ? '#' : num}
                 </button>
               );
             })}

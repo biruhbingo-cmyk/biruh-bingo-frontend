@@ -4,17 +4,42 @@ import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useGameStore } from '@/store/gameStore';
 
+interface Card {
+  _id: string;
+  cardId: number;
+  numbers: {
+    B: number[];
+    I: number[];
+    N: number[];
+    G: number[];
+    O: number[];
+  };
+}
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
 export default function CardSelection({ userId }: { userId: string }) {
-  const [selectedNumbers, setSelectedNumbers] = useState<number[]>([]);
+  const [cards, setCards] = useState<Card[]>([]);
+  const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [balance, setBalance] = useState<number>(0);
-  const { selectedGameType, setCurrentView, setSelectedCardId, setCurrentGameId, balance: storeBalance } = useGameStore();
-  const requiredSelections = 1; // Number of cards needed
+  const [loading, setLoading] = useState(true);
+  const { selectedGameType, setCurrentView, setSelectedCardId, setCurrentGameId } = useGameStore();
 
   useEffect(() => {
+    fetchCards();
     fetchUserBalance();
   }, [userId]);
+
+  const fetchCards = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/api/game/cards/all`);
+      setCards(response.data.cards || []);
+    } catch (error) {
+      console.error('Error fetching cards:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchUserBalance = async () => {
     try {
@@ -37,43 +62,22 @@ export default function CardSelection({ userId }: { userId: string }) {
     }
   };
 
-  const handleNumberClick = (number: number) => {
-    if (selectedNumbers.length >= 25 && !selectedNumbers.includes(number)) {
-      // Limit to 25 numbers for a bingo card (5x5 grid)
-      return;
-    }
-
-    setSelectedNumbers((prev) => {
-      if (prev.includes(number)) {
-        return prev.filter((n) => n !== number);
-      } else {
-        // Limit to 25 selections (for a standard bingo card)
-        if (prev.length >= 25) return prev;
-        return [...prev, number];
-      }
-    });
+  const handleCardClick = (card: Card) => {
+    setSelectedCard(card);
   };
 
   const handleStartGame = async () => {
-    if (selectedNumbers.length < 25 || !selectedGameType) {
-      alert('Please select 25 numbers to create your bingo card');
-      return;
-    }
+    if (!selectedCard || !selectedGameType) return;
 
     try {
-      // First, we need to create or find a card with these numbers
-      // For now, we'll try to find an existing card or create one
-      // This might need backend support for custom cards
       const response = await axios.post(`${API_URL}/api/game/join`, {
         userId,
         gameType: selectedGameType,
-        selectedNumbers: selectedNumbers.sort((a, b) => a - b), // Send sorted numbers
+        cardId: selectedCard.cardId,
       });
 
       if (response.data.success) {
-        // If backend returns a cardId, use it
-        const cardId = response.data.cardId || 1; // Fallback to 1 if not provided
-        setSelectedCardId(cardId);
+        setSelectedCardId(selectedCard.cardId);
         setCurrentGameId(response.data.gameId);
         setCurrentView('play');
       }
@@ -82,8 +86,13 @@ export default function CardSelection({ userId }: { userId: string }) {
     }
   };
 
-  // Generate numbers 1-100
-  const numbers = Array.from({ length: 100 }, (_, i) => i + 1);
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-white bg-[#0a1929]">
+        <div>Loading cards...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0a1929] text-white">
@@ -118,6 +127,14 @@ export default function CardSelection({ userId }: { userId: string }) {
 
       {/* User Info Banner */}
       <div className="bg-[#1e3a5f] px-4 py-3 border-b border-[#254a75]">
+        <div className="flex items-center gap-4 mb-2">
+          <button 
+            onClick={() => setCurrentView('selection')}
+            className="text-blue-400 hover:text-blue-300 text-sm"
+          >
+            ተመለስ
+          </button>
+        </div>
         <div className="grid grid-cols-4 gap-4 text-center">
           <div>
             <div className="text-xs text-gray-400 mb-1">Balance</div>
@@ -142,47 +159,85 @@ export default function CardSelection({ userId }: { userId: string }) {
       <div className="px-4 py-3 bg-[#0a1929]">
         <div className="text-sm">
           <span className="text-gray-400">Num of cart selected - </span>
-          <span className={selectedNumbers.length >= 25 ? 'text-white' : 'text-red-500'}>
-            {selectedNumbers.length >= 25 ? 1 : 0}
+          <span className={selectedCard ? 'text-red-500' : 'text-red-500'}>
+            {selectedCard ? 1 : 0}
           </span>
-          <span className="text-white">/{requiredSelections}</span>
+          <span className="text-white">/1</span>
         </div>
       </div>
 
-      {/* Number Grid */}
-      <div className="px-4 py-4">
-        <div className="grid grid-cols-12 gap-2">
-          {numbers.map((number) => {
-            const isSelected = selectedNumbers.includes(number);
-            const isDisabled = !isSelected && selectedNumbers.length >= 25;
-            
+      {/* Cards Grid (1-100) */}
+      <div className="px-4 py-4 pb-32">
+        <div className="grid grid-cols-10 gap-2">
+          {cards.slice(0, 100).map((card) => {
+            const isSelected = selectedCard?.cardId === card.cardId;
             return (
               <button
-                key={number}
-                onClick={() => handleNumberClick(number)}
-                disabled={isDisabled}
+                key={card._id}
+                onClick={() => handleCardClick(card)}
                 className={`aspect-square rounded-lg border-2 transition-all text-sm font-semibold ${
                   isSelected
-                    ? 'bg-blue-500 border-blue-600 text-white'
-                    : isDisabled
-                    ? 'bg-gray-700 border-gray-600 text-gray-500 cursor-not-allowed'
+                    ? 'bg-blue-500 border-blue-600 text-white ring-2 ring-blue-400'
                     : 'bg-[#1e3a5f] border-[#254a75] text-white hover:bg-[#254a75] hover:border-blue-500'
                 }`}
               >
-                {number}
+                {card.cardId}
               </button>
             );
           })}
         </div>
       </div>
 
+      {/* Selected Card Preview (BINGO Table) */}
+      {selectedCard && (
+        <div className="fixed bottom-20 left-0 right-0 px-4 pb-4 bg-[#0a1929] border-t border-[#1e3a5f]">
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 mb-2">
+            <div className="text-center text-sm font-semibold mb-3 text-white">Card {selectedCard.cardId}</div>
+            <div className="grid grid-cols-5 gap-1 mb-2">
+              {(['B', 'I', 'N', 'G', 'O'] as const).map((letter, idx) => {
+                const colors = ['bg-pink-500', 'bg-green-400', 'bg-blue-600', 'bg-orange-500', 'bg-red-500'];
+                return (
+                  <div
+                    key={letter}
+                    className={`text-center font-bold text-sm py-1 ${colors[idx]} text-white rounded`}
+                  >
+                    {letter}
+                  </div>
+                );
+              })}
+            </div>
+
+            {[0, 1, 2, 3, 4].map((row) => (
+              <div key={row} className="grid grid-cols-5 gap-1 mb-1">
+                {(['B', 'I', 'N', 'G', 'O'] as const).map((letter) => {
+                  const num = selectedCard.numbers[letter][row];
+                  // Check if this is the center cell (row 2, column N) - should be empty for 24 number cards
+                  const isCenter = row === 2 && letter === 'N';
+                  
+                  return (
+                    <div
+                      key={`${letter}-${row}`}
+                      className={`aspect-square rounded border-2 border-gray-300 flex items-center justify-center font-semibold text-xs ${
+                        isCenter ? 'bg-gray-200' : 'bg-white text-black'
+                      }`}
+                    >
+                      {isCenter ? '#' : num}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Start Button */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#0a1929] border-t border-[#1e3a5f]">
         <button
           onClick={handleStartGame}
-          disabled={selectedNumbers.length < 25}
+          disabled={!selectedCard}
           className={`w-full py-4 rounded-lg font-bold text-lg flex items-center justify-center gap-2 transition-all ${
-            selectedNumbers.length >= 25
+            selectedCard
               ? 'bg-gradient-to-r from-blue-500 via-blue-600 to-yellow-500 text-white hover:from-blue-600 hover:via-blue-700 hover:to-yellow-600 shadow-lg'
               : 'bg-gray-600 text-gray-400 cursor-not-allowed'
           }`}
@@ -190,7 +245,7 @@ export default function CardSelection({ userId }: { userId: string }) {
           <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
           </svg>
-          <span>ይጫኑ ለመጀመር...</span>
+          <span>ወደ ጨዋታው ይግቡ</span>
         </button>
       </div>
     </div>
