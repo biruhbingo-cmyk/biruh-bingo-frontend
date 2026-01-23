@@ -134,7 +134,7 @@ export default function GameSelection({ userId }: { userId: string }) {
             const status = game?.status || 'waiting';
             const playerCount = game?.playerCount || 0;
             const prize = game?.potentialWin || 0;
-            const canJoin = balance >= type && playerCount > 0;
+            const canJoin = balance >= type && status !== 'playing';
 
             return (
               <div
