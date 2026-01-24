@@ -99,7 +99,7 @@ export default function CardSelection({ userId }: { userId: string }) {
       {/* Header */}
       <div className="bg-[#132f4c] px-4 py-3 flex items-center justify-between border-b border-[#1e3a5f]">
         <div className="flex items-center gap-3">
-          <h1 className="text-xl font-bold text-white">Cheers Bingo</h1>
+          <h1 className="text-xl font-bold text-white">Mekdes Bingo</h1>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 bg-yellow-500/20 px-3 py-1.5 rounded-lg">
