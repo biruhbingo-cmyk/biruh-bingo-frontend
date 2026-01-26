@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { getGames, calculatePotentialWin, getCountdownSeconds, type Game, type Wallet } from '@/lib/api';
+import { useEffect, useState, useRef } from 'react';
+import { getGames, calculatePotentialWin, getCountdownSeconds, WS_URL, type Game, type Wallet } from '@/lib/api';
 import { useGameStore } from '@/store/gameStore';
+import { useGameWebSocket, type WebSocketMessage } from '@/hooks/useSocket';
 import Header from './Header';
 import { type User } from '@/lib/api';
 
@@ -26,7 +27,11 @@ export default function GameSelection({ user, wallet }: GameSelectionProps) {
   const [games, setGames] = useState<Game[]>([]);
   const [countdowns, setCountdowns] = useState<Record<string, number | null>>({});
   const { setCurrentView, setSelectedGameType, setSelectedGameTypeString, setCurrentGameId } = useGameStore();
+  
+  // Store WebSocket connections for each game type
+  const socketsRef = useRef<Map<string, WebSocket>>(new Map());
 
+  // Fetch initial games data
   useEffect(() => {
     const fetchGames = async () => {
       try {
@@ -38,13 +43,145 @@ export default function GameSelection({ user, wallet }: GameSelectionProps) {
     };
 
     fetchGames();
+  }, []);
+
+  // Connect WebSocket for each game type to get real-time updates
+  useEffect(() => {
+    const gameTypes = ['G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7'];
     
-    // Refresh games every 2 seconds
-    const interval = setInterval(() => {
-      fetchGames();
-    }, 2000);
+    // Ensure WS_URL doesn't have trailing slash
+    const baseUrl = WS_URL.endsWith('/') ? WS_URL.slice(0, -1) : WS_URL;
     
-    return () => clearInterval(interval);
+    gameTypes.forEach((gameType) => {
+      const wsUrl = `${baseUrl}/api/v1/ws/game?type=${gameType}`;
+      
+      try {
+        const ws = new WebSocket(wsUrl);
+        socketsRef.current.set(gameType, ws);
+
+        ws.onopen = () => {
+          console.log(`✅ Connected to WebSocket for ${gameType}`);
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const message: WebSocketMessage = JSON.parse(event.data);
+            
+            switch (message.event) {
+              case 'INITIAL_STATE':
+                if (message.data.game) {
+                  setGames((prev) => {
+                    const exists = prev.some((g) => g.id === message.data.game.id);
+                    if (!exists) {
+                      return [...prev, message.data.game];
+                    }
+                    return prev.map((g) => 
+                      g.id === message.data.game.id ? message.data.game : g
+                    );
+                  });
+                }
+                break;
+
+              case 'GAME_STATUS':
+                if (message.data.state) {
+                  setGames((prev) => {
+                    const gameIndex = prev.findIndex((g) => g.game_type === gameType);
+                    if (gameIndex !== -1) {
+                      const updated = [...prev];
+                      updated[gameIndex] = {
+                        ...updated[gameIndex],
+                        state: message.data.state,
+                        player_count: message.data.player_count ?? updated[gameIndex].player_count,
+                        prize_pool: message.data.prize_pool ?? updated[gameIndex].prize_pool,
+                      };
+                      return updated;
+                    }
+                    return prev;
+                  });
+                }
+                break;
+
+              case 'PLAYER_COUNT':
+                if (message.data.count !== undefined) {
+                  setGames((prev) => {
+                    const gameIndex = prev.findIndex((g) => g.game_type === gameType);
+                    if (gameIndex !== -1) {
+                      const updated = [...prev];
+                      updated[gameIndex] = {
+                        ...updated[gameIndex],
+                        player_count: message.data.count,
+                      };
+                      return updated;
+                    }
+                    return prev;
+                  });
+                }
+                break;
+
+              case 'PLAYER_JOINED':
+              case 'PLAYER_LEFT':
+                if (message.data.count !== undefined) {
+                  setGames((prev) => {
+                    const gameIndex = prev.findIndex((g) => g.game_type === gameType);
+                    if (gameIndex !== -1) {
+                      const updated = [...prev];
+                      updated[gameIndex] = {
+                        ...updated[gameIndex],
+                        player_count: message.data.count,
+                      };
+                      return updated;
+                    }
+                    return prev;
+                  });
+                }
+                break;
+
+              case 'COUNTDOWN':
+                if (message.data.secondsLeft !== undefined) {
+                  setGames((prev) => {
+                    const game = prev.find((g) => g.game_type === gameType);
+                    if (game && game.countdown_ends) {
+                      // Update countdown in the countdowns state
+                      setCountdowns((prevCountdowns) => ({
+                        ...prevCountdowns,
+                        [game.id]: message.data.secondsLeft,
+                      }));
+                    }
+                    return prev;
+                  });
+                }
+                break;
+
+              default:
+                break;
+            }
+          } catch (error) {
+            console.error(`Error parsing WebSocket message for ${gameType}:`, error);
+          }
+        };
+
+        ws.onerror = (error) => {
+          console.error(`WebSocket error for ${gameType}:`, error);
+        };
+
+        ws.onclose = () => {
+          console.log(`WebSocket closed for ${gameType}`);
+          socketsRef.current.delete(gameType);
+        };
+      } catch (error) {
+        console.error(`Failed to create WebSocket for ${gameType}:`, error);
+      }
+    });
+
+    // Cleanup: close all WebSocket connections
+    return () => {
+      socketsRef.current.forEach((ws, gameType) => {
+        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+          ws.close();
+        }
+      });
+      socketsRef.current.clear();
+    };
   }, []);
 
   // Update countdowns every second
