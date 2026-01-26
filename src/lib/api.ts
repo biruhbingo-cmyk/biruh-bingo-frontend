@@ -1,7 +1,35 @@
 import axios from 'axios';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080';
+
+// Derive WebSocket URL from API URL (ws:// for http, wss:// for https)
+const getWebSocketUrl = (): string => {
+  let wsUrl: string;
+  
+  if (process.env.NEXT_PUBLIC_WS_URL) {
+    wsUrl = process.env.NEXT_PUBLIC_WS_URL;
+  } else {
+    // Auto-detect protocol from API_URL
+    if (API_URL.startsWith('https://')) {
+      wsUrl = API_URL.replace('https://', 'wss://');
+    } else if (API_URL.startsWith('http://')) {
+      wsUrl = API_URL.replace('http://', 'ws://');
+    } else {
+      wsUrl = 'ws://localhost:8080';
+    }
+  }
+  
+  // Ensure protocol is correct (convert https/http to wss/ws if needed)
+  if (wsUrl.startsWith('https://')) {
+    wsUrl = wsUrl.replace('https://', 'wss://');
+  } else if (wsUrl.startsWith('http://')) {
+    wsUrl = wsUrl.replace('http://', 'ws://');
+  }
+  
+  return wsUrl;
+};
+
+const WS_URL = getWebSocketUrl();
 
 export { API_URL, WS_URL };
 
@@ -90,5 +118,16 @@ export const getCountdownSeconds = (countdownEnds: string | null): number | null
   const ends = new Date(countdownEnds).getTime();
   const seconds = Math.max(0, Math.floor((ends - now) / 1000));
   return seconds > 0 ? seconds : null;
+};
+
+// Card API
+export interface Card {
+  id: number;
+  numbers: number[][]; // 5x5 array: [row][column]
+}
+
+export const getCard = async (cardId: number): Promise<Card> => {
+  const response = await axios.get(`${API_URL}/api/v1/cards/${cardId}`);
+  return response.data.card;
 };
 
