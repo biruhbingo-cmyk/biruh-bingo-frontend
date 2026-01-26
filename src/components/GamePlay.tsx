@@ -110,11 +110,17 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
               
               // Handle countdown based on state change
               if (message.data.state !== 'COUNTDOWN') {
+                // Clear countdown when state changes to DRAWING, FINISHED, etc.
                 setCountdown(null);
               } else {
                 // State is COUNTDOWN - set countdown from message or calculate
                 if (message.data.secondsLeft !== undefined) {
-                  setCountdown(message.data.secondsLeft);
+                  // Only set if > 0, otherwise clear it
+                  if (message.data.secondsLeft > 0) {
+                    setCountdown(message.data.secondsLeft);
+                  } else {
+                    setCountdown(null);
+                  }
                 } else if (message.data.countdown_ends) {
                   // Calculate from countdown_ends if secondsLeft not provided
                   const now = new Date().getTime();
@@ -122,21 +128,61 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
                   const seconds = Math.max(0, Math.floor((ends - now) / 1000));
                   if (seconds > 0) {
                     setCountdown(seconds);
+                  } else {
+                    setCountdown(null);
                   }
                 }
               }
+            }
+            // Also check if countdown_ends is set but state wasn't updated
+            else if (message.data.countdown_ends) {
+              setGame((prev) => {
+                if (!prev || prev.state !== 'WAITING') return prev;
+                // If we have countdown_ends but state is still WAITING, update to COUNTDOWN
+                console.log('🔄 Auto-updating state from WAITING to COUNTDOWN (countdown_ends received)');
+                return {
+                  ...prev,
+                  state: 'COUNTDOWN',
+                  countdown_ends: message.data.countdown_ends,
+                  player_count: message.data.player_count ?? prev.player_count,
+                  prize_pool: message.data.prize_pool ?? prev.prize_pool,
+                };
+              });
             }
             break;
 
           case 'COUNTDOWN':
             console.log('⏰ Countdown update:', message.data.secondsLeft);
-            if (message.data.secondsLeft !== undefined) {
-              setCountdown(message.data.secondsLeft);
-            }
-            // Also update countdown_ends if provided
-            if (message.data.countdown_ends) {
-              setGame((prev) => prev ? { ...prev, countdown_ends: message.data.countdown_ends } : null);
-            }
+            // Only process COUNTDOWN events if state is COUNTDOWN or WAITING
+            // Don't process if state is already DRAWING or FINISHED
+            setGame((prev) => {
+              if (!prev) return null;
+              // Don't update state if already DRAWING, FINISHED, CLOSED, or CANCELLED
+              if (prev.state === 'DRAWING' || prev.state === 'FINISHED' || prev.state === 'CLOSED' || prev.state === 'CANCELLED') {
+                // Clear countdown if state is DRAWING or beyond
+                if (prev.state === 'DRAWING') {
+                  setCountdown(null);
+                }
+                return prev;
+              }
+              
+              // If state is still WAITING, update it to COUNTDOWN
+              const newState = prev.state === 'WAITING' ? 'COUNTDOWN' : prev.state;
+              
+              // Only set countdown if state is COUNTDOWN
+              if (newState === 'COUNTDOWN' && message.data.secondsLeft !== undefined) {
+                setCountdown(message.data.secondsLeft);
+              } else if (message.data.secondsLeft === 0 || message.data.secondsLeft < 0) {
+                // If countdown reaches 0, clear it
+                setCountdown(null);
+              }
+              
+              return {
+                ...prev,
+                state: newState,
+                countdown_ends: message.data.countdown_ends ?? prev.countdown_ends,
+              };
+            });
             break;
 
           case 'PLAYER_COUNT':
@@ -223,6 +269,14 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
     };
   }, [socket, user.id, setCurrentView]);
 
+  // Ensure state is COUNTDOWN if countdown_ends is set
+  useEffect(() => {
+    if (game && game.state === 'WAITING' && game.countdown_ends) {
+      console.log('🔄 Auto-updating state: WAITING -> COUNTDOWN (countdown_ends detected)');
+      setGame((prev) => prev ? { ...prev, state: 'COUNTDOWN' } : null);
+    }
+  }, [game?.state, game?.countdown_ends]);
+
   // Update countdown timer - initial calculation when entering COUNTDOWN state
   // WebSocket COUNTDOWN events will update it every second
   useEffect(() => {
@@ -231,6 +285,7 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
       return;
     }
 
+    // Clear countdown if state is not COUNTDOWN
     if (game.state !== 'COUNTDOWN') {
       setCountdown(null);
       return;
@@ -246,7 +301,7 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
     const ends = new Date(game.countdown_ends).getTime();
     const seconds = Math.max(0, Math.floor((ends - now) / 1000));
     
-    // Set initial countdown (WebSocket will override with more accurate values)
+    // Set initial countdown only if > 0, otherwise clear it
     if (seconds > 0) {
       setCountdown(seconds);
     } else {
@@ -427,8 +482,8 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
       {/* Main Game Area */}
       <div className="flex-1 overflow-y-auto px-2 sm:px-4 py-1 sm:py-2">
         <div className={`grid grid-cols-1 ${game.state === 'COUNTDOWN' ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-2 sm:gap-3`}>
-          {/* Timer Section - Only show in COUNTDOWN state */}
-          {game.state === 'COUNTDOWN' && countdown !== null && (
+          {/* Timer Section - Only show in COUNTDOWN state and countdown > 0 */}
+          {game.state === 'COUNTDOWN' && countdown !== null && countdown > 0 && (
             <div className="lg:col-span-1">
               <div className="bg-blue-700 rounded-lg p-2 sm:p-3 flex flex-col items-center justify-center min-h-[100px] sm:min-h-[120px] border-2 border-blue-500">
                 <div className="text-white text-xs sm:text-sm font-semibold mb-1">TIMER</div>
