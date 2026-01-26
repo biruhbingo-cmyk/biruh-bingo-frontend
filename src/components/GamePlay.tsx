@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { useSocket } from '@/hooks/useSocket';
+import { useGameWebSocket, type WebSocketMessage } from '@/hooks/useSocket';
 import { useGameStore } from '@/store/gameStore';
+import { API_URL, getGameState } from '@/lib/api';
 import axios from 'axios';
 
-interface Card {
+interface BingoCard {
   cardId: number;
   numbers: {
     B: number[];
@@ -17,180 +18,217 @@ interface Card {
 }
 
 interface DrawnNumber {
+  letter: string;
   number: number;
-  column: 'B' | 'I' | 'N' | 'G' | 'O';
-  timestamp: number;
+  drawn_at: string;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-
 export default function GamePlay({ userId }: { userId: string }) {
-  const { selectedCardId, currentGameId, selectedGameType } = useGameStore();
-  const [card, setCard] = useState<Card | null>(null);
+  const { selectedCardId, currentGameId } = useGameStore();
+  const [card, setCard] = useState<BingoCard | null>(null);
   const [markedNumbers, setMarkedNumbers] = useState<number[]>([]);
   const [drawnNumbers, setDrawnNumbers] = useState<DrawnNumber[]>([]);
   const [countdown, setCountdown] = useState<number | null>(null);
-  const [gameStatus, setGameStatus] = useState<'waiting' | 'playing' | 'finished'>('waiting');
+  const [gameStatus, setGameStatus] = useState<'WAITING' | 'COUNTDOWN' | 'DRAWING' | 'FINISHED' | 'CLOSED' | 'CANCELLED'>('WAITING');
   const [winner, setWinner] = useState<string | null>(null);
   const [showBingoModal, setShowBingoModal] = useState(false);
-  const socket = useSocket();
+  const [loading, setLoading] = useState(true);
+  const socket = useGameWebSocket(currentGameId, userId);
   const drawnNumbersRef = useRef<HTMLDivElement>(null);
 
+  // Fetch game state and card data from backend
   useEffect(() => {
-    if (!selectedCardId) {
-      fetchCard();
-    }
-  }, [selectedCardId]);
+    const fetchGameData = async () => {
+      if (!currentGameId || !selectedCardId) return;
+      
+      try {
+        const gameState = await getGameState(currentGameId);
+        
+        // Initialize drawn numbers
+        if (gameState.drawnNumbers) {
+          setDrawnNumbers(gameState.drawnNumbers);
+        }
+        
+        // Set game status
+        if (gameState.game.state) {
+          setGameStatus(gameState.game.state);
+        }
 
+        // TODO: Fetch card data from backend
+        // For now, card data should come from the backend API
+        // The backend should provide card data when joining or via a separate endpoint
+        // This is a placeholder - the actual card data will come from the backend
+        setLoading(false);
+      } catch (error) {
+        console.error('Error fetching game data:', error);
+        setLoading(false);
+      }
+    };
+
+    fetchGameData();
+  }, [currentGameId, selectedCardId]);
+
+  // Handle WebSocket messages
   useEffect(() => {
     if (!socket || !currentGameId) return;
 
-    socket.emit('join-game', { gameId: currentGameId, userId });
+    const handleMessage = (event: MessageEvent) => {
+      try {
+        const message: WebSocketMessage = JSON.parse(event.data);
+        console.log('WebSocket message:', message);
 
-    socket.on('countdown', (data: { seconds: number }) => {
-      setCountdown(data.seconds);
-    });
+        switch (message.event) {
+          case 'INITIAL_STATE':
+            // Initialize game state
+            if (message.data.drawnNumbers) {
+              setDrawnNumbers(message.data.drawnNumbers);
+            }
+            if (message.data.game?.state) {
+              setGameStatus(message.data.game.state);
+            }
+            if (message.data.secondsLeft !== undefined) {
+              setCountdown(message.data.secondsLeft);
+            }
+            // Card data should come from backend - check if it's in the initial state
+            if (message.data.card) {
+              setCard(message.data.card);
+            }
+            break;
 
-    socket.on('countdown-stopped', () => {
-      setCountdown(null);
-    });
+          case 'GAME_STATUS':
+            if (message.data.status) {
+              setGameStatus(message.data.status);
+            }
+            if (message.data.secondsLeft !== undefined) {
+              setCountdown(message.data.secondsLeft);
+            }
+            break;
 
-    socket.on('game-started', () => {
-      setGameStatus('playing');
-      setCountdown(null);
-    });
+          case 'COUNTDOWN':
+            if (message.data.secondsLeft !== undefined) {
+              setCountdown(message.data.secondsLeft);
+            }
+            break;
 
-    socket.on('number-drawn', (data: { number: number; column: string; drawnNumbers: number[] }) => {
-      const newDrawn: DrawnNumber = {
-        number: data.number,
-        column: data.column as 'B' | 'I' | 'N' | 'G' | 'O',
-        timestamp: Date.now(),
-      };
-      setDrawnNumbers((prev) => [newDrawn, ...prev].slice(0, 10)); // Keep last 10
-      
-      // Auto-scroll to top
-      if (drawnNumbersRef.current) {
-        drawnNumbersRef.current.scrollTop = 0;
+          case 'NUMBER_DRAWN':
+            if (message.data.letter && message.data.number) {
+              const newDrawn: DrawnNumber = {
+                letter: message.data.letter,
+                number: message.data.number,
+                drawn_at: message.data.drawn_at || new Date().toISOString(),
+              };
+              setDrawnNumbers((prev) => [newDrawn, ...prev].slice(0, 20)); // Keep last 20
+              
+              // Auto-scroll to top
+              if (drawnNumbersRef.current) {
+                drawnNumbersRef.current.scrollTop = 0;
+              }
+            }
+            break;
+
+          case 'WINNER':
+            if (message.data.userId) {
+              setWinner(message.data.userId);
+              setGameStatus('FINISHED');
+              setShowBingoModal(false);
+            }
+            break;
+
+          case 'PLAYER_ELIMINATED':
+            if (message.data.userId === userId) {
+              alert('Invalid bingo claim. You have been eliminated.');
+              setShowBingoModal(false);
+            }
+            break;
+
+          case 'GAME_CANCELLED':
+            alert('Game was cancelled due to insufficient players.');
+            setGameStatus('CLOSED');
+            break;
+
+          default:
+            console.log('Unhandled WebSocket event:', message.event);
+        }
+      } catch (error) {
+        console.error('Error parsing WebSocket message:', error);
       }
-    });
+    };
 
-    socket.on('number-marked', (data: { number: number; userId: string }) => {
-      // Update marked numbers if it's our number
-      if (data.userId === userId) {
-        setMarkedNumbers((prev) => {
-          if (!prev.includes(data.number)) {
-            return [...prev, data.number];
-          }
-          return prev;
-        });
-      }
-    });
-
-    socket.on('game-won', (data: { winnerName: string; prize: number }) => {
-      setWinner(data.winnerName);
-      setGameStatus('finished');
-    });
-
-    socket.on('bingo-valid', () => {
-      setShowBingoModal(false);
-      setGameStatus('finished');
-    });
-
-    socket.on('bingo-invalid', (data: { message: string }) => {
-      alert(data.message);
-      setShowBingoModal(false);
-    });
+    socket.addEventListener('message', handleMessage);
 
     return () => {
-      socket.emit('leave-game', { gameId: currentGameId });
-      socket.off('countdown');
-      socket.off('countdown-stopped');
-      socket.off('game-started');
-      socket.off('number-drawn');
-      socket.off('number-marked');
-      socket.off('game-won');
-      socket.off('bingo-valid');
-      socket.off('bingo-invalid');
+      socket.removeEventListener('message', handleMessage);
     };
   }, [socket, currentGameId, userId]);
 
-  const fetchCard = async () => {
-    try {
-      const response = await axios.get(`${API_URL}/api/game/cards/all`);
-      const cards = response.data.cards;
-      if (selectedCardId) {
-        const foundCard = cards.find((c: Card) => c.cardId === selectedCardId);
-        if (foundCard) {
-          setCard(foundCard);
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching card:', error);
-    }
-  };
-
-  const handleNumberClick = async (number: number) => {
-    if (gameStatus !== 'playing' || !currentGameId || !selectedCardId) return;
+  const handleNumberClick = (number: number) => {
+    if (gameStatus !== 'DRAWING' || !currentGameId || !selectedCardId) return;
     if (markedNumbers.includes(number)) return;
+    if (number === 0) return; // Center cell
 
-    try {
-      socket?.emit('mark-number', {
-        gameId: currentGameId,
-        userId,
-        cardId: selectedCardId,
-        number,
-      });
-      setMarkedNumbers((prev) => [...prev, number]);
-    } catch (error) {
-      console.error('Error marking number:', error);
-    }
+    // Mark number locally (client-side marking for UI)
+    setMarkedNumbers((prev) => [...prev, number]);
   };
 
-  const handleBingo = () => {
-    if (!currentGameId || !selectedCardId) return;
+  const handleBingo = async () => {
+    if (!currentGameId || !selectedCardId || markedNumbers.length === 0) {
+      alert('Please mark at least one number before claiming bingo');
+      return;
+    }
+
     setShowBingoModal(true);
-    socket?.emit('claim-bingo', {
-      gameId: currentGameId,
-      userId,
-      cardId: selectedCardId,
-    });
+
+    try {
+      const response = await axios.post(`${API_URL}/api/v1/games/${currentGameId}/bingo`, {
+        user_id: userId,
+        marked_numbers: markedNumbers,
+      });
+
+      if (response.data.winner) {
+        setWinner(userId);
+        setGameStatus('FINISHED');
+        setShowBingoModal(false);
+      } else {
+        // Player eliminated - handled by WebSocket event
+        setShowBingoModal(false);
+      }
+    } catch (error: any) {
+      console.error('Error claiming bingo:', error);
+      alert(error.response?.data?.error || 'Failed to claim bingo');
+      setShowBingoModal(false);
+    }
   };
 
   const handleLeaveGame = async () => {
     if (!currentGameId) return;
     try {
-      await axios.post(`${API_URL}/api/game/leave`, {
-        userId,
-        gameId: currentGameId,
+      await axios.post(`${API_URL}/api/v1/games/${currentGameId}/leave`, {
+        user_id: userId,
       });
-      window.location.reload();
-    } catch (error) {
+      // Navigate back to game selection
+      window.location.href = `/?userId=${userId}`;
+    } catch (error: any) {
       console.error('Error leaving game:', error);
+      alert(error.response?.data?.error || 'Failed to leave game');
     }
   };
 
-  if (!card) {
+  if (loading || !card) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-white">
-        Loading card...
+      <div className="min-h-screen flex items-center justify-center text-white bg-[#0a1929]">
+        <div>Loading game...</div>
       </div>
     );
   }
 
-  const getColumnForNumber = (num: number): 'B' | 'I' | 'N' | 'G' | 'O' => {
-    if (num >= 1 && num <= 15) return 'B';
-    if (num >= 16 && num <= 30) return 'I';
-    if (num >= 31 && num <= 45) return 'N';
-    if (num >= 46 && num <= 60) return 'G';
-    if (num >= 61 && num <= 75) return 'O';
-    return 'B';
+  const isNumberDrawn = (num: number) => {
+    return drawnNumbers.some((d) => d.number === num);
   };
 
   const isNumberMarked = (num: number) => markedNumbers.includes(num);
-  const isNumberDrawn = (num: number) => drawnNumbers.some((d) => d.number === num);
 
   return (
-    <div className="min-h-screen p-4 text-white">
+    <div className="min-h-screen p-4 text-white bg-[#0a1929]">
       {/* Header */}
       <div className="flex justify-between items-center mb-4">
         <button
@@ -201,12 +239,19 @@ export default function GamePlay({ userId }: { userId: string }) {
         </button>
         {winner && (
           <div className="text-center">
-            <div className="text-2xl font-bold text-yellow-400">🏆 Winner: {winner}</div>
+            <div className="text-2xl font-bold text-yellow-400">
+              🏆 {winner === userId ? 'You Won!' : `Winner: ${winner}`}
+            </div>
           </div>
         )}
-        {countdown !== null && gameStatus === 'waiting' && (
+        {countdown !== null && (gameStatus === 'WAITING' || gameStatus === 'COUNTDOWN') && (
           <div className="text-xl font-bold">
             Starting in: {countdown}s
+          </div>
+        )}
+        {gameStatus === 'DRAWING' && (
+          <div className="text-xl font-bold text-green-400">
+            Game in Progress
           </div>
         )}
       </div>
@@ -223,7 +268,7 @@ export default function GamePlay({ userId }: { userId: string }) {
               key={idx}
               className="px-3 py-1 bg-blue-500 rounded-lg font-semibold"
             >
-              {drawn.column}-{drawn.number}
+              {drawn.letter}-{drawn.number}
             </div>
           ))}
           {drawnNumbers.length === 0 && (
@@ -254,10 +299,10 @@ export default function GamePlay({ userId }: { userId: string }) {
               const num = card.numbers[letter][row];
               const marked = isNumberMarked(num);
               const drawn = isNumberDrawn(num);
-              const canClick = gameStatus === 'playing' && drawn && !marked;
+              const canClick = gameStatus === 'DRAWING' && drawn && !marked && num !== 0;
 
-              // Check if this is the center cell (row 2, column N) - should be empty for 24 number cards
-              const isCenter = row === 2 && letter === 'N';
+              // Check if this is the center cell (row 2, column N)
+              const isCenter = row === 2 && letter === 'N' && num === 0;
               
               return (
                 <button
@@ -274,7 +319,7 @@ export default function GamePlay({ userId }: { userId: string }) {
                       : 'bg-white/20 border-white/30 text-white'
                   } ${canClick && !isCenter ? 'cursor-pointer hover:scale-105' : 'cursor-not-allowed'}`}
                 >
-                  {isCenter ? '#' : num}
+                  {isCenter ? 'FREE' : num}
                 </button>
               );
             })}
@@ -283,10 +328,11 @@ export default function GamePlay({ userId }: { userId: string }) {
       </div>
 
       {/* BINGO Button */}
-      {gameStatus === 'playing' && (
+      {gameStatus === 'DRAWING' && (
         <button
           onClick={handleBingo}
-          className="w-full py-4 bg-green-500 hover:bg-green-600 rounded-lg font-bold text-xl mb-4"
+          disabled={markedNumbers.length === 0}
+          className="w-full py-4 bg-green-500 hover:bg-green-600 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg font-bold text-xl mb-4"
         >
           🎯 BINGO
         </button>
@@ -305,4 +351,3 @@ export default function GamePlay({ userId }: { userId: string }) {
     </div>
   );
 }
-

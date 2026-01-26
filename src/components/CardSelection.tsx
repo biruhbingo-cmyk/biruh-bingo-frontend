@@ -1,98 +1,63 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import axios from 'axios';
 import { useGameStore } from '@/store/gameStore';
+import { API_URL, getWalletByTelegramId } from '@/lib/api';
+import axios from 'axios';
 
-interface Card {
-  _id: string;
-  cardId: number;
-  numbers: {
-    B: number[];
-    I: number[];
-    N: number[];
-    G: number[];
-    O: number[];
-  };
-}
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+// Cards are 1-100, server-generated
+const CARD_IDS = Array.from({ length: 100 }, (_, i) => i + 1);
 
 export default function CardSelection({ userId }: { userId: string }) {
-  const [cards, setCards] = useState<Card[]>([]);
-  const [selectedCard, setSelectedCard] = useState<Card | null>(null);
+  const [selectedCardId, setSelectedCardId] = useState<number | null>(null);
   const [balance, setBalance] = useState<number>(0);
-  const [loading, setLoading] = useState(true);
-  const { selectedGameType, setCurrentView, setSelectedCardId, setCurrentGameId } = useGameStore();
+  const [loading, setLoading] = useState(false);
+  const { selectedGameType, currentGameId, setCurrentView, setSelectedCardId: setStoreCardId, setCurrentGameId: setStoreGameId } = useGameStore();
 
   useEffect(() => {
-    fetchCards();
     fetchUserBalance();
   }, [userId]);
 
-  const fetchCards = async () => {
+  const fetchUserBalance = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/game/cards/all`);
-      setCards(response.data.cards || []);
+      const wallet = await getWalletByTelegramId(userId);
+      setBalance(wallet.balance);
     } catch (error) {
-      console.error('Error fetching cards:', error);
+      console.error('Error fetching balance:', error);
+    }
+  };
+
+  const handleCardClick = (cardId: number) => {
+    setSelectedCardId(cardId);
+  };
+
+  const handleJoinGame = async () => {
+    if (!selectedCardId || !currentGameId) {
+      alert('Please select a card and ensure you have a game selected');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await axios.post(`${API_URL}/api/v1/games/${currentGameId}/join`, {
+        user_id: userId,
+        card_id: selectedCardId,
+      });
+
+      if (response.data.player) {
+        setStoreCardId(selectedCardId);
+        // Card data should be stored or fetched from backend
+        // The backend will validate and provide the card data
+        setCurrentView('play');
+      }
+    } catch (error: any) {
+      console.error('Error joining game:', error);
+      alert(error.response?.data?.error || 'Failed to join game');
     } finally {
       setLoading(false);
     }
   };
-
-  const fetchUserBalance = async () => {
-    try {
-      const response = await axios.get(`${API_URL}/api/user/${userId}`);
-      const userBalance = response.data?.user?.balance ?? 0;
-      setBalance(userBalance);
-    } catch (error: any) {
-      if (error.response?.status === 404) {
-        try {
-          const token = new URLSearchParams(window.location.search).get('token');
-          if (token) {
-            const telegramResponse = await axios.get(`${API_URL}/api/user/telegram/${token}`);
-            const userBalance = telegramResponse.data?.user?.balance ?? 0;
-            setBalance(userBalance);
-          }
-        } catch (telegramError) {
-          console.error('Error fetching by telegram ID:', telegramError);
-        }
-      }
-    }
-  };
-
-  const handleCardClick = (card: Card) => {
-    setSelectedCard(card);
-  };
-
-  const handleStartGame = async () => {
-    if (!selectedCard || !selectedGameType) return;
-
-    try {
-      const response = await axios.post(`${API_URL}/api/game/join`, {
-        userId,
-        gameType: selectedGameType,
-        cardId: selectedCard.cardId,
-      });
-
-      if (response.data.success) {
-        setSelectedCardId(selectedCard.cardId);
-        setCurrentGameId(response.data.gameId);
-        setCurrentView('play');
-      }
-    } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to join game');
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-white bg-[#0a1929]">
-        <div>Loading cards...</div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-[#0a1929] text-white">
@@ -109,11 +74,6 @@ export default function CardSelection({ userId }: { userId: string }) {
             </svg>
             <span className="text-yellow-400 font-semibold">{balance.toFixed(2)} ETB</span>
           </div>
-          <button className="text-gray-400 hover:text-white">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-            </svg>
-          </button>
           <button 
             onClick={() => setCurrentView('selection')}
             className="text-gray-400 hover:text-white"
@@ -159,8 +119,8 @@ export default function CardSelection({ userId }: { userId: string }) {
       <div className="px-4 py-3 bg-[#0a1929]">
         <div className="text-sm">
           <span className="text-gray-400">Num of cart selected - </span>
-          <span className={selectedCard ? 'text-red-500' : 'text-red-500'}>
-            {selectedCard ? 1 : 0}
+          <span className={selectedCardId ? 'text-red-500' : 'text-red-500'}>
+            {selectedCardId ? 1 : 0}
           </span>
           <span className="text-white">/1</span>
         </div>
@@ -169,19 +129,19 @@ export default function CardSelection({ userId }: { userId: string }) {
       {/* Cards Grid (1-100) */}
       <div className="px-4 py-4">
         <div className="grid grid-cols-12 gap-2 mb-6">
-          {cards.slice(0, 100).map((card) => {
-            const isSelected = selectedCard?.cardId === card.cardId;
+          {CARD_IDS.map((cardId) => {
+            const isSelected = selectedCardId === cardId;
             return (
               <button
-                key={card._id}
-                onClick={() => handleCardClick(card)}
+                key={cardId}
+                onClick={() => handleCardClick(cardId)}
                 className={`aspect-square rounded-lg border-2 transition-all text-xs font-semibold relative ${
                   isSelected
                     ? 'bg-[#1e3a5f] border-red-500 border-2 text-white ring-2 ring-red-500 ring-offset-1'
                     : 'bg-[#1e3a5f] border-[#254a75] text-white hover:bg-[#254a75] hover:border-blue-500'
                 }`}
               >
-                {card.cardId}
+                {cardId}
                 {isSelected && (
                   <div className="absolute inset-0 rounded-lg border-2 border-red-500"></div>
                 )}
@@ -190,49 +150,17 @@ export default function CardSelection({ userId }: { userId: string }) {
           })}
         </div>
 
-        {/* BINGO Card Table - Shows below the grid */}
-        {selectedCard ? (
+        {/* Card Preview Placeholder */}
+        {selectedCardId ? (
           <div className="flex justify-center mb-24">
-            <div className="bg-white rounded-lg p-2 max-w-[200px]">
-              <div className="grid grid-cols-5 gap-0.5 mb-1">
-                {(['B', 'I', 'N', 'G', 'O'] as const).map((letter, idx) => {
-                  const colors = ['bg-pink-500', 'bg-green-400', 'bg-blue-600', 'bg-orange-500', 'bg-red-500'];
-                  return (
-                    <div
-                      key={letter}
-                      className={`text-center font-bold text-xs py-1 ${colors[idx]} text-white rounded-t`}
-                    >
-                      {letter}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {[0, 1, 2, 3, 4].map((row) => (
-                <div key={row} className="grid grid-cols-5 gap-0.5">
-                  {(['B', 'I', 'N', 'G', 'O'] as const).map((letter) => {
-                    const num = selectedCard.numbers[letter][row];
-                    // Check if this is the center cell (row 2, column N) - should be empty for 24 number cards
-                    const isCenter = row === 2 && letter === 'N';
-                    
-                    return (
-                      <div
-                        key={`${letter}-${row}`}
-                        className={`aspect-square rounded border border-gray-300 flex items-center justify-center font-semibold text-xs ${
-                          isCenter ? 'bg-gray-200 text-gray-400' : 'bg-white text-black'
-                        }`}
-                      >
-                        {isCenter ? '#' : num}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
+            <div className="bg-white/10 rounded-lg p-4 text-center">
+              <p className="text-white font-semibold">Card {selectedCardId} Selected</p>
+              <p className="text-gray-400 text-sm mt-2">Card data will be provided by the backend</p>
             </div>
           </div>
         ) : (
           <div className="bg-white/10 rounded-lg p-8 mb-24 text-center text-gray-400">
-            <p>Select a card above to view its BINGO numbers</p>
+            <p>Select a card above to join the game</p>
           </div>
         )}
       </div>
@@ -240,18 +168,30 @@ export default function CardSelection({ userId }: { userId: string }) {
       {/* Start Button */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#0a1929] border-t border-[#1e3a5f]">
         <button
-          onClick={handleStartGame}
-          disabled={!selectedCard}
+          onClick={handleJoinGame}
+          disabled={!selectedCardId || loading}
           className={`w-full py-4 rounded-lg font-bold text-lg flex items-center justify-center gap-2 transition-all ${
-            selectedCard
+            selectedCardId && !loading
               ? 'bg-gradient-to-r from-blue-500 via-blue-600 to-yellow-500 text-white hover:from-blue-600 hover:via-blue-700 hover:to-yellow-600 shadow-lg'
               : 'bg-gray-600 text-gray-400 cursor-not-allowed'
           }`}
         >
-          <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-          </svg>
-          <span>ወደ ጨዋታው ይግቡ</span>
+          {loading ? (
+            <>
+              <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span>Joining...</span>
+            </>
+          ) : (
+            <>
+              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+              </svg>
+              <span>ወደ ጨዋታው ይግቡ</span>
+            </>
+          )}
         </button>
       </div>
     </div>
