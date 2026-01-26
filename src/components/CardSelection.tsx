@@ -150,12 +150,8 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
       return;
     }
 
-    const token = searchParams.get('token');
-    const userIdParam = searchParams.get('userId');
-    const telegramId = token || (userIdParam && /^\d+$/.test(userIdParam) ? userIdParam : null);
-    
-    if (!telegramId) {
-      alert('User ID not found');
+    if (!user || !user.id) {
+      alert('User information not found');
       return;
     }
 
@@ -165,7 +161,7 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
       const response = await axios.post(
         `${API_URL}/api/v1/games/${currentGameId}/join`,
         {
-          user_id: telegramId,
+          user_id: user.id, // Use user UUID, not telegram_id
           card_id: selectedCardId,
         }
       );
@@ -176,7 +172,8 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
       }
     } catch (err: any) {
       console.error('Error joining game:', err);
-      alert(err.response?.data?.error || 'Failed to join game');
+      const errorMessage = err.response?.data?.error || err.response?.data?.message || 'Failed to join game';
+      alert(errorMessage);
     } finally {
       setJoining(false);
     }

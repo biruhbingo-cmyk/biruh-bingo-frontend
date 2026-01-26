@@ -6,6 +6,7 @@ import { getUserByTelegramId, getWalletByTelegramId, type User, type Wallet } fr
 import { useGameStore } from '@/store/gameStore';
 import GameSelection from '@/components/GameSelection';
 import CardSelection from '@/components/CardSelection';
+import GamePlay from '@/components/GamePlay';
 
 function HomeContent() {
   const searchParams = useSearchParams();
@@ -74,6 +75,10 @@ function HomeContent() {
   // Render based on current view
   if (currentView === 'cards') {
     return <CardSelection user={user} wallet={wallet} />;
+  }
+
+  if (currentView === 'play') {
+    return <GamePlay user={user} wallet={wallet} />;
   }
 
   // Default to game selection
