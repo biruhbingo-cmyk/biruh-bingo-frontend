@@ -101,10 +101,12 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
                 number: message.data.number,
                 drawn_at: message.data.drawn_at || new Date().toISOString(),
               };
+              // Add to drawn numbers - keep ALL drawn numbers
               setDrawnNumbers((prev) => {
-                const updated = [...prev, newDrawn];
-                // Keep only last 5
-                return updated.slice(-5);
+                // Check if already exists to avoid duplicates
+                const exists = prev.some(n => n.letter === newDrawn.letter && n.number === newDrawn.number);
+                if (exists) return prev;
+                return [...prev, newDrawn];
               });
             }
             break;
@@ -172,14 +174,10 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
       return;
     }
 
-    // Toggle mark
+    // Mark the number (only mark, don't toggle - once marked it stays marked)
     setMarkedNumbers((prev) => {
       const newSet = new Set(prev);
-      if (newSet.has(key)) {
-        newSet.delete(key);
-      } else {
-        newSet.add(key);
-      }
+      newSet.add(key);
       return newSet;
     });
   };
@@ -323,27 +321,38 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
         </div>
       </div>
 
-      {/* Main Game Area */}
-      <div className="flex-1 overflow-y-auto px-2 sm:px-4 py-2">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 sm:gap-4">
-          {/* Timer Section */}
-          <div className="lg:col-span-1">
-            <div className="bg-blue-700 rounded-lg p-4 sm:p-6 flex flex-col items-center justify-center min-h-[150px] border-2 border-blue-500">
-              <div className="text-white text-sm sm:text-base font-semibold mb-2">TIMER</div>
-              {countdown !== null ? (
-                <div className="text-white text-4xl sm:text-6xl font-bold">{countdown}</div>
-              ) : game.state === 'DRAWING' ? (
-                <div className="text-white text-2xl sm:text-3xl font-bold">PLAYING</div>
-              ) : (
-                <div className="text-white text-2xl sm:text-3xl font-bold">WAITING</div>
-              )}
+      {/* Waiting Message */}
+      {game.state === 'WAITING' && (
+          <div className="mt-4 sm:mt-3 mb-4 sm:mb-4 text-center">
+            <div className="bg-yellow-500/20 border-2 border-yellow-400 rounded-lg p-2 sm:p-3 inline-block">
+              <p className="text-yellow-300 font-bold text-sm sm:text-base">
+                ⏳ Waiting for other players to join...
+              </p>
             </div>
           </div>
+        )}
+
+      {/* Main Game Area */}
+      <div className="flex-1 overflow-y-auto px-2 sm:px-4 py-1 sm:py-2">
+        <div className={`grid grid-cols-1 ${game.state === 'COUNTDOWN' ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-2 sm:gap-3`}>
+          {/* Timer Section - Only show in COUNTDOWN state */}
+          {game.state === 'COUNTDOWN' && (
+            <div className="lg:col-span-1">
+              <div className="bg-blue-700 rounded-lg p-2 sm:p-3 flex flex-col items-center justify-center min-h-[100px] sm:min-h-[120px] border-2 border-blue-500">
+                <div className="text-white text-xs sm:text-sm font-semibold mb-1">TIMER</div>
+                {countdown !== null ? (
+                  <div className="text-white text-2xl sm:text-4xl font-bold">{countdown}</div>
+                ) : (
+                  <div className="text-white text-lg sm:text-xl font-bold">WAITING</div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Main Bingo Board - Called Numbers */}
-          <div className="lg:col-span-2">
-            <div className="bg-blue-700 rounded-lg p-2 sm:p-3 border-2 border-blue-500">
-              <div className="grid grid-cols-5 gap-1 sm:gap-2">
+          <div className={game.state === 'DRAWING' ? 'lg:col-span-2' : 'lg:col-span-2'}>
+            <div className="bg-blue-700 rounded-lg p-2 border-2 border-blue-500">
+              <div className="grid grid-cols-5 gap-1">
                 {['B', 'I', 'N', 'G', 'O'].map((letter, idx) => {
                   const colors = ['bg-pink-500', 'bg-green-400', 'bg-blue-500', 'bg-orange-500', 'bg-red-500'];
                   const ranges = [
@@ -357,11 +366,11 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
                   return (
                     <div key={letter} className="flex flex-col">
                       {/* Header */}
-                      <div className={`${colors[idx]} text-white font-bold text-xs sm:text-sm p-1 sm:p-2 rounded mb-1 text-center`}>
+                      <div className={`${colors[idx]} text-white font-bold text-xs p-1 rounded mb-1 text-center`}>
                         {letter}
                       </div>
                       {/* Numbers */}
-                      <div className="space-y-0.5 sm:space-y-1">
+                      <div className="space-y-0.5">
                         {Array.from({ length: ranges[idx].end - ranges[idx].start + 1 }, (_, i) => {
                           const number = ranges[idx].start + i;
                           const key = `${letter}-${number}`;
@@ -370,7 +379,7 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
                           return (
                             <div
                               key={number}
-                              className={`text-xs sm:text-sm font-bold p-1 sm:p-1.5 rounded text-center ${
+                              className={`text-[10px] font-bold p-1 rounded text-center ${
                                 isDrawn
                                   ? 'bg-gray-800 text-white'
                                   : 'bg-blue-600 text-white'
@@ -388,54 +397,48 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
             </div>
           </div>
 
-          {/* Recent 5 Drawn Numbers */}
+          {/* Drawn Numbers in Row Format */}
           <div className="lg:col-span-1">
-            <div className="space-y-2">
-              {recent5Drawn.map((drawn, idx) => {
-                const colors: Record<string, string> = {
-                  'B': 'bg-pink-500',
-                  'I': 'bg-green-400',
-                  'N': 'bg-blue-500',
-                  'G': 'bg-orange-500',
-                  'O': 'bg-red-500',
-                };
-                
-                return (
-                  <div
-                    key={`${drawn.letter}-${drawn.number}-${idx}`}
-                    className={`${colors[drawn.letter]} text-white font-bold text-sm sm:text-base p-2 sm:p-3 rounded-lg text-center border-2 border-white`}
-                  >
-                    {drawn.letter}-{drawn.number}
-                  </div>
-                );
-              })}
-              {recent5Drawn.length === 0 && (
-                <div className="text-blue-200 text-sm text-center py-4">No numbers drawn yet</div>
+            <div className="text-white text-xs sm:text-sm font-bold mb-4 mt-2 sm:mt-3">Drawn Numbers</div>
+            <div className="flex flex-wrap gap-1.5 mb-2 sm:mb-3">
+              {drawnNumbers.length > 0 ? (
+                [...drawnNumbers].reverse().map((drawn, idx) => {
+                  const colors: Record<string, string> = {
+                    'B': 'bg-pink-500',
+                    'I': 'bg-green-400',
+                    'N': 'bg-blue-500',
+                    'G': 'bg-orange-500',
+                    'O': 'bg-red-500',
+                  };
+                  
+                  return (
+                    <div
+                      key={`${drawn.letter}-${drawn.number}-${idx}`}
+                      className={`${colors[drawn.letter]} text-white font-bold text-sm sm:text-base px-2 sm:px-3 py-1 sm:py-1.5 rounded text-center border-2 border-white`}
+                    >
+                      {drawn.letter}-{drawn.number}
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-blue-200 text-xs sm:text-sm">No numbers drawn yet</div>
               )}
             </div>
           </div>
         </div>
 
-        {/* Current Call */}
-        <div className="mt-3 sm:mt-4">
-          <div className="text-white font-bold text-sm sm:text-base mb-2">Current Call</div>
-          <div className={`${currentCall ? `bg-${currentCall.letter === 'B' ? 'pink' : currentCall.letter === 'I' ? 'green' : currentCall.letter === 'N' ? 'blue' : currentCall.letter === 'G' ? 'orange' : 'red'}-500` : 'bg-gray-500'} text-white font-bold text-lg sm:text-2xl p-3 sm:p-4 rounded-lg text-center border-2 border-white`}>
-            {currentCall ? `${currentCall.letter}-${currentCall.number}` : '-'}
-          </div>
-        </div>
-
         {/* Player's Bingo Card */}
         {playerCardNumbers && (
-          <div className="mt-3 sm:mt-4">
-            <div className="bg-white rounded-lg p-2 sm:p-3 border-2 border-blue-300">
-              <div className="grid grid-cols-5 gap-1 sm:gap-2">
+          <div className="mt-3 sm:mt-4 mb-4 sm:mb-3 flex justify-center">
+            <div className="bg-white rounded-lg p-1 border border-blue-300 inline-block">
+              <div className="grid grid-cols-5 gap-0.5">
                 {/* Header Row */}
                 {['B', 'I', 'N', 'G', 'O'].map((letter, idx) => {
                   const colors = ['bg-pink-500', 'bg-green-400', 'bg-blue-500', 'bg-orange-500', 'bg-red-500'];
                   return (
                     <div
                       key={letter}
-                      className={`${colors[idx]} text-white font-bold text-xs sm:text-sm p-1 sm:p-2 rounded text-center`}
+                      className={`${colors[idx]} text-white font-bold text-[8px] p-0.5 rounded text-center`}
                     >
                       {letter}
                     </div>
@@ -456,13 +459,11 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
                         key={`${rowIndex}-${colIndex}`}
                         onClick={() => !isCenter && isDrawn && handleMarkNumber(letter, number)}
                         disabled={isCenter || !isDrawn}
-                        className={`aspect-square rounded-lg border-2 flex items-center justify-center font-bold text-xs sm:text-sm transition-all ${
+                        className={`w-8 h-8 sm:w-10 sm:h-10 rounded border flex items-center justify-center font-bold text-[8px] sm:text-[9px] transition-all ${
                           isCenter
                             ? 'bg-gray-800 text-white border-gray-700 cursor-default'
                             : isMarked
                             ? 'bg-gray-800 text-white border-gray-700'
-                            : isDrawn
-                            ? 'bg-blue-100 text-gray-900 border-blue-300 hover:bg-blue-200 cursor-pointer'
                             : 'bg-white text-gray-900 border-gray-300 cursor-default'
                         }`}
                       >
@@ -472,7 +473,7 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
                   })
                 )}
               </div>
-              <div className="text-center mt-2 text-gray-700 font-bold text-xs sm:text-sm">
+              <div className="text-center mt-0.5 text-gray-700 font-bold text-[8px] sm:text-[9px]">
                 BOARD NUMBER {selectedCardId}
               </div>
             </div>
@@ -480,26 +481,26 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
         )}
 
         {/* Action Buttons */}
-        <div className="mt-3 sm:mt-4 grid grid-cols-3 gap-2 sm:gap-3">
+        <div className="mt-1 sm:mt-2 grid grid-cols-3 gap-1 sm:gap-2">
           <button
             onClick={handleLeaveGame}
             disabled={leaving}
-            className="bg-pink-500 hover:bg-pink-600 text-white font-bold text-sm sm:text-base py-2 sm:py-3 rounded-lg transition-all disabled:opacity-50"
+            className="bg-pink-500 hover:bg-pink-600 text-white font-bold text-xs sm:text-sm py-1.5 sm:py-2 rounded-lg transition-all disabled:opacity-50"
           >
             {leaving ? 'Leaving...' : 'Leave'}
           </button>
           
           <button
             onClick={handleClaimBingo}
-            disabled={claimingBingo || game.state !== 'DRAWING'}
-            className="bg-blue-400 hover:bg-blue-500 text-white font-bold text-base sm:text-lg py-2 sm:py-3 rounded-lg transition-all disabled:opacity-50"
+            disabled={claimingBingo}
+            className="bg-gradient-to-r from-blue-400 via-blue-500 to-yellow-400 hover:from-blue-500 hover:via-blue-600 hover:to-yellow-500 text-white font-bold text-xs sm:text-sm py-1.5 sm:py-2 rounded-lg transition-all disabled:opacity-50"
           >
             {claimingBingo ? 'Verifying...' : 'Bingo'}
           </button>
           
           <button
             onClick={() => window.location.reload()}
-            className="bg-yellow-400 hover:bg-yellow-500 text-white font-bold text-sm sm:text-base py-2 sm:py-3 rounded-lg transition-all"
+            className="bg-yellow-400 hover:bg-yellow-500 text-white font-bold text-xs sm:text-sm py-1.5 sm:py-2 rounded-lg transition-all"
           >
             Refresh
           </button>
