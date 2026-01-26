@@ -284,7 +284,7 @@ export default function GameSelection({ user, wallet }: GameSelectionProps) {
       <Header user={user} wallet={wallet} />
 
       {/* Game Selection List */}
-      <div className="p-4 space-y-3 pb-32">
+      <div className="p-2 sm:p-4 space-y-2 sm:space-y-3">
         {GAME_TYPES.map((gameType) => {
           // Find game for this type (WAITING or COUNTDOWN)
           const game = games.find(
@@ -301,33 +301,33 @@ export default function GameSelection({ user, wallet }: GameSelectionProps) {
           return (
             <div
               key={gameType.type}
-              className="bg-[#1e3a5f] rounded-lg p-4 flex items-center justify-between"
+              className="bg-[#1e3a5f] rounded-lg p-2 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4"
             >
               {/* Left Side - Game Info */}
-              <div className="flex-1">
+              <div className="flex-1 w-full sm:w-auto">
                 {/* Bet Amount and Status */}
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="text-xl font-bold text-white">{betAmount} ብር</span>
-                  <span className={`${getStatusColor(state)} text-white text-xs px-2 py-1 rounded`}>
+                <div className="flex items-center gap-2 sm:gap-3 mb-1 sm:mb-2 flex-wrap">
+                  <span className="text-lg sm:text-2xl font-bold text-white">{betAmount} ብር</span>
+                  <span className={`${getStatusColor(state)} text-white text-xs sm:text-sm px-1.5 sm:px-2 py-0.5 sm:py-1 rounded font-bold`}>
                     {getStatusLabel(state)}
                   </span>
                   {state === 'COUNTDOWN' && countdown !== null && (
-                    <span className="bg-red-500/20 text-red-400 text-xs px-2 py-1 rounded font-mono">
+                    <span className="bg-red-500/20 text-red-400 text-xs sm:text-sm px-1.5 sm:px-2 py-0.5 sm:py-1 rounded font-mono font-bold">
                       {countdown}s
                     </span>
                   )}
                 </div>
 
                 {/* Player Count and Potential Win */}
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-1.5">
-                    <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
+                  <div className="flex items-center gap-1 sm:gap-1.5">
+                    <svg className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
                       <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
                     </svg>
-                    <span className="text-sm text-gray-300">{playerCount > 0 ? playerCount : '-'} players</span>
+                    <span className="text-sm sm:text-base text-gray-300 font-bold">{playerCount > 0 ? playerCount : '-'} players</span>
                   </div>
-                  <div className="bg-yellow-500/20 text-yellow-400 text-xs px-2 py-1 rounded">
-                    {potentialWin > 0 ? `${potentialWin.toFixed(2)} ብር ደራሽ` : '- ብር ደራሽ'}
+                  <div className="bg-yellow-500/20 text-yellow-400 text-xs sm:text-sm px-1.5 sm:px-2 py-0.5 sm:py-1 rounded font-bold">
+                    {potentialWin > 0 ? `${potentialWin.toFixed(2)} ብር` : '- ብር'}
                   </div>
                 </div>
               </div>
@@ -339,13 +339,13 @@ export default function GameSelection({ user, wallet }: GameSelectionProps) {
                   handleGameClick(game, betAmount, gameType.type);
                 }}
                 disabled={!canJoin}
-                className={`px-6 py-3 rounded-lg font-semibold flex items-center gap-2 transition-all ${
+                className={`w-full sm:w-auto px-4 sm:px-6 py-2 sm:py-3 rounded-lg font-bold text-base sm:text-lg flex items-center justify-center gap-2 transition-all ${
                   canJoin
                     ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600 cursor-pointer'
                     : 'bg-gray-600 text-gray-400 cursor-not-allowed opacity-50'
                 }`}
               >
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="currentColor" viewBox="0 0 20 20">
                   <path d="M8 9a3 3 0 100-6 3 3 0 000 6zM8 11a6 6 0 016 6H2a6 6 0 016-6zM16 7a1 1 0 10-2 0v1h-1a1 1 0 100 2h1v1a1 1 0 102 0v-1h1a1 1 0 100-2h-1V7z" />
                 </svg>
                 <span>ይግቡ</span>
