@@ -1,126 +1,172 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import axios from 'axios';
 import { useGameStore } from '@/store/gameStore';
+import {
+  getUserByTelegramId,
+  getWalletByTelegramId,
+  getGames,
+  calculatePotentialWin,
+  getCountdownSeconds,
+  type User,
+  type Wallet,
+  type Game,
+} from '@/lib/api';
 
-interface Game {
-  gameType: number;
-  status: string;
-  playerCount: number;
-  prizePool: number;
-  potentialWin: number;
-  gameId: string | null;
-}
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+// Game type mapping: G1-G7 to bet amounts
+const GAME_TYPES = [
+  { type: 'G1', bet: 5 },
+  { type: 'G2', bet: 7 },
+  { type: 'G3', bet: 10 },
+  { type: 'G4', bet: 20 },
+  { type: 'G5', bet: 50 },
+  { type: 'G6', bet: 100 },
+  { type: 'G7', bet: 200 },
+];
 
 export default function GameSelection({ userId }: { userId: string }) {
   const [games, setGames] = useState<Game[]>([]);
-  const [balance, setBalance] = useState<number>(0);
+  const [user, setUser] = useState<User | null>(null);
+  const [wallet, setWallet] = useState<Wallet | null>(null);
   const [loading, setLoading] = useState(true);
-  const { setCurrentView, setSelectedGameType, setBalance: setStoreBalance } = useGameStore();
+  const [countdowns, setCountdowns] = useState<Record<string, number | null>>({});
+  const { setCurrentView, setSelectedGameType, setBalance: setStoreBalance, setCurrentGameId } = useGameStore();
 
   useEffect(() => {
     if (userId) {
-      fetchGames();
-      fetchUserBalance();
+      fetchData();
       const interval = setInterval(() => {
-        fetchGames();
-        fetchUserBalance();
-      }, 5000); // Update every 5 seconds
+        fetchData();
+      }, 2000); // Update every 2 seconds for countdown
       return () => clearInterval(interval);
     }
   }, [userId]);
 
-  const fetchGames = async () => {
+  // Update countdowns every second
+  useEffect(() => {
+    const countdownInterval = setInterval(() => {
+      const newCountdowns: Record<string, number | null> = {};
+      games.forEach((game) => {
+        if (game.state === 'COUNTDOWN' && game.countdown_ends) {
+          newCountdowns[game.id] = getCountdownSeconds(game.countdown_ends);
+        }
+      });
+      setCountdowns(newCountdowns);
+    }, 1000);
+    return () => clearInterval(countdownInterval);
+  }, [games]);
+
+  const fetchData = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/game/list`);
-      setGames(response.data.games);
+      // Fetch user and wallet by telegram_id
+      const [userData, walletData, gamesData] = await Promise.all([
+        getUserByTelegramId(userId),
+        getWalletByTelegramId(userId),
+        getGames(),
+      ]);
+
+      setUser(userData);
+      setWallet(walletData);
+      setStoreBalance(walletData.balance);
+      setGames(gamesData);
     } catch (error) {
-      console.error('Error fetching games:', error);
+      console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchUserBalance = async () => {
-    try {
-      console.log('Fetching balance for userId:', userId);
-      const response = await axios.get(`${API_URL}/api/user/${userId}`);
-      console.log('Balance response:', response.data);
-      const userBalance = response.data?.user?.balance ?? 0;
-      console.log('Setting balance to:', userBalance);
-      setBalance(userBalance);
-      setStoreBalance(userBalance);
-    } catch (error: any) {
-      console.error('Error fetching balance:', error);
-      console.error('Error details:', error.response?.data || error.message);
-      // Try alternative endpoint if userId might be telegramId
-      if (error.response?.status === 404) {
-        try {
-          const token = new URLSearchParams(window.location.search).get('token');
-          if (token) {
-            const telegramResponse = await axios.get(`${API_URL}/api/user/telegram/${token}`);
-            const userBalance = telegramResponse.data?.user?.balance ?? 0;
-            setBalance(userBalance);
-            setStoreBalance(userBalance);
-          }
-        } catch (telegramError) {
-          console.error('Error fetching by telegram ID:', telegramError);
-        }
-      }
-    }
-  };
+  const handleJoinGame = (game: Game) => {
+    if (!wallet) return;
 
-  const handleJoinGame = async (gameType: number) => {
-    if (balance < gameType) {
+    if (wallet.balance < game.bet_amount) {
       alert('Insufficient balance');
       return;
     }
 
-    setSelectedGameType(gameType);
+    if (game.state !== 'WAITING' && game.state !== 'COUNTDOWN') {
+      alert('Game is not accepting new players');
+      return;
+    }
+
+    setCurrentGameId(game.id);
+    setSelectedGameType(game.bet_amount);
     setCurrentView('cards');
   };
 
-  const gameTypes = [5, 7, 10, 20, 50, 100, 200];
-
-  const getStatusLabel = (status: string | undefined) => {
-    if (status === 'playing') return 'በመጫወት ላይ';
-    if (status === 'waiting') return 'ክፍት';
-    return 'ክፍት';
+  const getStatusLabel = (state: Game['state']) => {
+    switch (state) {
+      case 'WAITING':
+        return 'ክፍት';
+      case 'COUNTDOWN':
+        return 'በመቁጠር ላይ';
+      case 'DRAWING':
+        return 'በመጫወት ላይ';
+      case 'FINISHED':
+        return 'ያለቀ';
+      case 'CLOSED':
+        return 'ዝግ';
+      case 'CANCELLED':
+        return 'ተሰርዟል';
+      default:
+        return 'ክፍት';
+    }
   };
 
-  const getStatusColor = (status: string | undefined) => {
-    if (status === 'playing') return 'bg-red-500';
-    return 'bg-green-500';
+  const getStatusColor = (state: Game['state']) => {
+    switch (state) {
+      case 'WAITING':
+        return 'bg-green-500';
+      case 'COUNTDOWN':
+        return 'bg-yellow-500';
+      case 'DRAWING':
+        return 'bg-red-500';
+      case 'FINISHED':
+      case 'CLOSED':
+      case 'CANCELLED':
+        return 'bg-gray-500';
+      default:
+        return 'bg-gray-500';
+    }
+  };
+
+  const canJoinGame = (game: Game): boolean => {
+    if (!wallet) return false;
+    if (wallet.balance < game.bet_amount) return false;
+    if (game.state !== 'WAITING' && game.state !== 'COUNTDOWN') return false;
+    return true;
+  };
+
+  const getUserDisplayName = (): string => {
+    if (!user) return 'User';
+    const firstName = user.first_name || '';
+    const lastName = user.last_name || '';
+    return `${firstName} ${lastName}`.trim() || 'User';
   };
 
   return (
     <div className="min-h-screen bg-[#0a1929] text-white">
-      {/* Header */}
-      <div className="bg-[#132f4c] px-4 py-3 flex items-center justify-between border-b border-[#1e3a5f]">
+      {/* Header - User Name and Balance */}
+      <div className="bg-[#132f4c] px-4 py-4 flex items-center justify-between border-b border-[#1e3a5f]">
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-bold text-white">Mekdes Bingo</h1>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <svg className="w-5 h-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+            </svg>
+            <span className="text-white font-semibold">{getUserDisplayName()}</span>
+          </div>
           <div className="flex items-center gap-2 bg-yellow-500/20 px-3 py-1.5 rounded-lg">
             <svg className="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
               <path d="M4 4a2 2 0 00-2 2v1a16.94 16.94 0 0012 6 16.94 16.94 0 0012-6V6a2 2 0 00-2-2H4z" />
               <path fillRule="evenodd" d="M18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z" clipRule="evenodd" />
             </svg>
-            <span className="text-yellow-400 font-semibold">{balance.toFixed(2)} ETB</span>
+            <span className="text-yellow-400 font-semibold">
+              {wallet ? wallet.balance.toFixed(2) : '0.00'} ETB
+            </span>
           </div>
-          <button className="text-gray-400 hover:text-white">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-            </svg>
-          </button>
-          <button className="text-gray-400 hover:text-white">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
         </div>
       </div>
 
@@ -129,32 +175,43 @@ export default function GameSelection({ userId }: { userId: string }) {
         {loading ? (
           <div className="text-center text-white py-8">Loading games...</div>
         ) : (
-          gameTypes.map((type) => {
-            const game = games.find((g) => g.gameType === type);
-            const status = game?.status || 'waiting';
-            const playerCount = game?.playerCount || 0;
-            const prize = game?.potentialWin || 0;
-            const canJoin = balance >= type && status !== 'playing';
+          GAME_TYPES.map((gameType) => {
+            // Find game for this type (WAITING or COUNTDOWN)
+            const game = games.find(
+              (g) => g.game_type === gameType.type && (g.state === 'WAITING' || g.state === 'COUNTDOWN')
+            );
+
+            const betAmount = gameType.bet;
+            const playerCount = game?.player_count || 0;
+            const potentialWin = game ? calculatePotentialWin(game) : 0;
+            const canJoin = game ? canJoinGame(game) : wallet ? wallet.balance >= betAmount : false;
+            const state = game?.state || 'WAITING';
+            const countdown = game ? countdowns[game.id] : null;
 
             return (
               <div
-                key={type}
+                key={gameType.type}
                 onClick={() => {
-                  if (canJoin) {
-                    handleJoinGame(type);
+                  if (game && canJoin) {
+                    handleJoinGame(game);
                   }
                 }}
                 className={`bg-[#1e3a5f] rounded-lg p-4 flex items-center justify-between cursor-pointer transition-all ${
-                  canJoin ? 'hover:bg-[#254a75] active:scale-[0.98]' : 'opacity-60'
+                  game && canJoin ? 'hover:bg-[#254a75] active:scale-[0.98]' : 'opacity-60'
                 }`}
               >
                 {/* Left Side */}
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
-                    <span className="text-xl font-bold text-white">{type} ብር</span>
-                    <span className={`${getStatusColor(status)} text-white text-xs px-2 py-1 rounded`}>
-                      {getStatusLabel(status)}
+                    <span className="text-xl font-bold text-white">{betAmount} ብር</span>
+                    <span className={`${getStatusColor(state)} text-white text-xs px-2 py-1 rounded`}>
+                      {getStatusLabel(state)}
                     </span>
+                    {state === 'COUNTDOWN' && countdown !== null && (
+                      <span className="bg-red-500/20 text-red-400 text-xs px-2 py-1 rounded font-mono">
+                        {countdown}s
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-4">
                     <div className="flex items-center gap-1.5">
@@ -164,7 +221,7 @@ export default function GameSelection({ userId }: { userId: string }) {
                       <span className="text-sm text-gray-300">{playerCount > 0 ? playerCount : '-'}</span>
                     </div>
                     <div className="bg-yellow-500/20 text-yellow-400 text-xs px-2 py-1 rounded">
-                      {prize > 0 ? `${prize} ብር ደራሽ` : '- ብር ደራሽ'}
+                      {potentialWin > 0 ? `${potentialWin.toFixed(2)} ብር ደራሽ` : '- ብር ደራሽ'}
                     </div>
                   </div>
                 </div>
@@ -173,16 +230,13 @@ export default function GameSelection({ userId }: { userId: string }) {
                 <div
                   onClick={(e) => e.stopPropagation()}
                   className={`px-6 py-3 rounded-lg font-semibold flex items-center gap-2 transition-all ${
-                    canJoin
+                    game && canJoin
                       ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600'
                       : 'bg-gray-600 text-gray-400 cursor-not-allowed'
                   }`}
                 >
                   <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
-                  </svg>
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V5V3z" />
+                    <path d="M8 9a3 3 0 100-6 3 3 0 000 6zM8 11a6 6 0 016 6H2a6 6 0 016-6zM16 7a1 1 0 10-2 0v1h-1a1 1 0 100 2h1v1a1 1 0 102 0v-1h1a1 1 0 100-2h-1V7z" />
                   </svg>
                   <span>ይግቡ</span>
                 </div>
