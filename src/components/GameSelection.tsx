@@ -30,7 +30,14 @@ export default function GameSelection({ userId }: { userId: string }) {
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [loading, setLoading] = useState(true);
   const [countdowns, setCountdowns] = useState<Record<string, number | null>>({});
+  const [currentUrl, setCurrentUrl] = useState<string>('');
   const { setCurrentView, setSelectedGameType, setBalance: setStoreBalance, setCurrentGameId } = useGameStore();
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setCurrentUrl(window.location.href);
+    }
+  }, []);
 
   useEffect(() => {
     if (userId) {
@@ -146,6 +153,13 @@ export default function GameSelection({ userId }: { userId: string }) {
 
   return (
     <div className="min-h-screen bg-[#0a1929] text-white">
+      {/* Debug URL */}
+      <div className="bg-gray-800/50 px-4 py-2 border-b border-gray-700">
+        <p className="text-xs text-gray-400 font-mono break-all">
+          <span className="text-yellow-400">DEBUG:</span> {currentUrl}
+        </p>
+      </div>
+
       {/* Header - User Name and Balance */}
       <div className="bg-[#132f4c] px-4 py-4 flex items-center justify-between border-b border-[#1e3a5f]">
         <div className="flex items-center gap-3">
