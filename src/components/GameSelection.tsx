@@ -84,6 +84,7 @@ export default function GameSelection({ user, wallet }: GameSelectionProps) {
 
               case 'GAME_STATUS':
                 if (message.data.state) {
+                  console.log(`🔄 Game status for ${gameType}:`, message.data.state, 'Player count:', message.data.player_count);
                   setGames((prev) => {
                     const gameIndex = prev.findIndex((g) => g.game_type === gameType);
                     if (gameIndex !== -1) {
@@ -93,7 +94,9 @@ export default function GameSelection({ user, wallet }: GameSelectionProps) {
                         state: message.data.state,
                         player_count: message.data.player_count ?? updated[gameIndex].player_count,
                         prize_pool: message.data.prize_pool ?? updated[gameIndex].prize_pool,
+                        countdown_ends: message.data.countdown_ends ?? updated[gameIndex].countdown_ends,
                       };
+                      console.log(`📊 Updated game ${gameType}:`, updated[gameIndex]);
                       return updated;
                     }
                     return prev;
@@ -103,6 +106,7 @@ export default function GameSelection({ user, wallet }: GameSelectionProps) {
 
               case 'PLAYER_COUNT':
                 if (message.data.count !== undefined) {
+                  console.log(`👥 Player count for ${gameType}:`, message.data.count);
                   setGames((prev) => {
                     const gameIndex = prev.findIndex((g) => g.game_type === gameType);
                     if (gameIndex !== -1) {
@@ -111,6 +115,7 @@ export default function GameSelection({ user, wallet }: GameSelectionProps) {
                         ...updated[gameIndex],
                         player_count: message.data.count,
                       };
+                      console.log(`📊 Updated player count for ${gameType}:`, updated[gameIndex]);
                       return updated;
                     }
                     return prev;
@@ -120,32 +125,63 @@ export default function GameSelection({ user, wallet }: GameSelectionProps) {
 
               case 'PLAYER_JOINED':
               case 'PLAYER_LEFT':
-                if (message.data.count !== undefined) {
-                  setGames((prev) => {
-                    const gameIndex = prev.findIndex((g) => g.game_type === gameType);
-                    if (gameIndex !== -1) {
-                      const updated = [...prev];
-                      updated[gameIndex] = {
-                        ...updated[gameIndex],
-                        player_count: message.data.count,
-                      };
-                      return updated;
-                    }
+                console.log(`👥 Player ${message.event} for ${gameType}:`, message.data);
+                setGames((prev) => {
+                  const gameIndex = prev.findIndex((g) => g.game_type === gameType);
+                  
+                  // If game doesn't exist, wait for INITIAL_STATE to create it
+                  if (gameIndex === -1) {
+                    console.log(`⚠️ Game ${gameType} not found in state, waiting for INITIAL_STATE`);
                     return prev;
-                  });
-                }
+                  }
+                  
+                  const updated = [...prev];
+                  const currentGame = updated[gameIndex];
+                  
+                  // If count is provided, use it; otherwise increment/decrement manually
+                  let newPlayerCount: number;
+                  if (message.data.count !== undefined) {
+                    newPlayerCount = message.data.count;
+                  } else {
+                    // Manually increment for JOINED, decrement for LEFT
+                    if (message.event === 'PLAYER_JOINED') {
+                      newPlayerCount = (currentGame.player_count || 0) + 1;
+                    } else {
+                      newPlayerCount = Math.max(0, (currentGame.player_count || 0) - 1);
+                    }
+                  }
+                  
+                  updated[gameIndex] = {
+                    ...currentGame,
+                    player_count: newPlayerCount,
+                    prize_pool: message.data.prize_pool ?? currentGame.prize_pool,
+                  };
+                  console.log(`📊 Updated ${message.event} for ${gameType}: player_count=${newPlayerCount}`, updated[gameIndex]);
+                  return updated;
+                });
                 break;
 
               case 'COUNTDOWN':
                 if (message.data.secondsLeft !== undefined) {
+                  console.log(`⏰ Countdown for ${gameType}:`, message.data.secondsLeft);
                   setGames((prev) => {
-                    const game = prev.find((g) => g.game_type === gameType);
-                    if (game && game.countdown_ends) {
+                    const gameIndex = prev.findIndex((g) => g.game_type === gameType);
+                    if (gameIndex !== -1) {
+                      const game = prev[gameIndex];
                       // Update countdown in the countdowns state
                       setCountdowns((prevCountdowns) => ({
                         ...prevCountdowns,
                         [game.id]: message.data.secondsLeft,
                       }));
+                      // Also update countdown_ends if provided
+                      if (message.data.countdown_ends) {
+                        const updated = [...prev];
+                        updated[gameIndex] = {
+                          ...updated[gameIndex],
+                          countdown_ends: message.data.countdown_ends,
+                        };
+                        return updated;
+                      }
                     }
                     return prev;
                   });

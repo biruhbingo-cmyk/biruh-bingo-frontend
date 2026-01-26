@@ -84,9 +84,28 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
           case 'PLAYER_JOINED':
           case 'PLAYER_LEFT':
             // Update player count when players join/leave
-            if (message.data.count !== undefined) {
-              setGame((prev) => prev ? { ...prev, player_count: message.data.count } : null);
-            }
+            setGame((prev) => {
+              if (!prev) return null;
+              
+              // If count is provided, use it; otherwise increment/decrement manually
+              let newPlayerCount: number;
+              if (message.data.count !== undefined) {
+                newPlayerCount = message.data.count;
+              } else {
+                // Manually increment for JOINED, decrement for LEFT
+                if (message.event === 'PLAYER_JOINED') {
+                  newPlayerCount = (prev.player_count || 0) + 1;
+                } else {
+                  newPlayerCount = Math.max(0, (prev.player_count || 0) - 1);
+                }
+              }
+              
+              return {
+                ...prev,
+                player_count: newPlayerCount,
+                prize_pool: message.data.prize_pool ?? prev.prize_pool,
+              };
+            });
             break;
 
           case 'COUNTDOWN':

@@ -34,7 +34,8 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
   const playerCardNumbers = selectedCardId ? getCardData(selectedCardId) : null;
 
   // Connect to WebSocket for real-time updates
-  const socket = useGameWebSocket(selectedGameTypeString, currentGameId);
+  // Use gameId (not gameType) for GamePlay page to get specific game updates
+  const socket = useGameWebSocket(null, currentGameId);
 
   // Fetch initial game state
   useEffect(() => {
@@ -62,15 +63,24 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
 
   // Listen to WebSocket messages
   useEffect(() => {
-    if (!socket) return;
+    if (!socket) {
+      console.log('⚠️ WebSocket not connected. currentGameId:', currentGameId);
+      return;
+    }
+    
+    console.log('✅ WebSocket connected for game:', currentGameId);
 
     const handleMessage = (event: MessageEvent) => {
       try {
         const message: WebSocketMessage = JSON.parse(event.data);
+        
+        // Debug logging to see what messages we're receiving
+        console.log('📨 WebSocket message received:', message.event, message.data);
 
         switch (message.event) {
           case 'INITIAL_STATE':
             if (message.data.game) {
+              console.log('🎮 Initial game state:', message.data.game);
               setGame(message.data.game);
             }
             if (message.data.drawnNumbers) {
@@ -84,14 +94,85 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
 
           case 'GAME_STATUS':
             if (message.data.state) {
-              setGame((prev) => prev ? { ...prev, state: message.data.state } : null);
+              console.log('🔄 Game status changed:', message.data.state, 'Player count:', message.data.player_count);
+              setGame((prev) => {
+                if (!prev) return null;
+                const updated = {
+                  ...prev,
+                  state: message.data.state,
+                  player_count: message.data.player_count ?? prev.player_count,
+                  prize_pool: message.data.prize_pool ?? prev.prize_pool,
+                  countdown_ends: message.data.countdown_ends ?? prev.countdown_ends,
+                };
+                console.log('📊 Updated game state:', updated);
+                return updated;
+              });
+              
+              // Handle countdown based on state change
+              if (message.data.state !== 'COUNTDOWN') {
+                setCountdown(null);
+              } else {
+                // State is COUNTDOWN - set countdown from message or calculate
+                if (message.data.secondsLeft !== undefined) {
+                  setCountdown(message.data.secondsLeft);
+                } else if (message.data.countdown_ends) {
+                  // Calculate from countdown_ends if secondsLeft not provided
+                  const now = new Date().getTime();
+                  const ends = new Date(message.data.countdown_ends).getTime();
+                  const seconds = Math.max(0, Math.floor((ends - now) / 1000));
+                  if (seconds > 0) {
+                    setCountdown(seconds);
+                  }
+                }
+              }
             }
             break;
 
           case 'COUNTDOWN':
+            console.log('⏰ Countdown update:', message.data.secondsLeft);
             if (message.data.secondsLeft !== undefined) {
               setCountdown(message.data.secondsLeft);
             }
+            // Also update countdown_ends if provided
+            if (message.data.countdown_ends) {
+              setGame((prev) => prev ? { ...prev, countdown_ends: message.data.countdown_ends } : null);
+            }
+            break;
+
+          case 'PLAYER_COUNT':
+            if (message.data.count !== undefined) {
+              setGame((prev) => prev ? { ...prev, player_count: message.data.count } : null);
+            }
+            break;
+
+          case 'PLAYER_JOINED':
+          case 'PLAYER_LEFT':
+            console.log(`👥 Player ${message.event}:`, message.data);
+            // Update player count when players join/leave
+            setGame((prev) => {
+              if (!prev) return null;
+              
+              // If count is provided, use it; otherwise increment/decrement manually
+              let newPlayerCount: number;
+              if (message.data.count !== undefined) {
+                newPlayerCount = message.data.count;
+              } else {
+                // Manually increment for JOINED, decrement for LEFT
+                if (message.event === 'PLAYER_JOINED') {
+                  newPlayerCount = (prev.player_count || 0) + 1;
+                } else {
+                  newPlayerCount = Math.max(0, (prev.player_count || 0) - 1);
+                }
+              }
+              
+              const updated = {
+                ...prev,
+                player_count: newPlayerCount,
+                prize_pool: message.data.prize_pool ?? prev.prize_pool,
+              };
+              console.log('📊 Updated player count:', newPlayerCount);
+              return updated;
+            });
             break;
 
           case 'NUMBER_DRAWN':
@@ -142,25 +223,36 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
     };
   }, [socket, user.id, setCurrentView]);
 
-  // Update countdown timer
+  // Update countdown timer - initial calculation when entering COUNTDOWN state
+  // WebSocket COUNTDOWN events will update it every second
   useEffect(() => {
-    if (!game || game.state !== 'COUNTDOWN' || !game.countdown_ends) {
+    if (!game) {
       setCountdown(null);
       return;
     }
 
-    const updateCountdown = () => {
-      const now = new Date().getTime();
-      const ends = new Date(game.countdown_ends!).getTime();
-      const seconds = Math.max(0, Math.floor((ends - now) / 1000));
-      setCountdown(seconds > 0 ? seconds : null);
-    };
+    if (game.state !== 'COUNTDOWN') {
+      setCountdown(null);
+      return;
+    }
 
-    updateCountdown();
-    const interval = setInterval(updateCountdown, 1000);
+    if (!game.countdown_ends) {
+      return;
+    }
 
-    return () => clearInterval(interval);
-  }, [game]);
+    // Calculate initial countdown when entering COUNTDOWN state
+    // WebSocket will send COUNTDOWN events to keep it updated
+    const now = new Date().getTime();
+    const ends = new Date(game.countdown_ends).getTime();
+    const seconds = Math.max(0, Math.floor((ends - now) / 1000));
+    
+    // Set initial countdown (WebSocket will override with more accurate values)
+    if (seconds > 0) {
+      setCountdown(seconds);
+    } else {
+      setCountdown(null);
+    }
+  }, [game?.state, game?.countdown_ends]);
 
   // Handle marking a number on player's card
   const handleMarkNumber = (letter: string, number: number) => {
@@ -336,15 +428,11 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
       <div className="flex-1 overflow-y-auto px-2 sm:px-4 py-1 sm:py-2">
         <div className={`grid grid-cols-1 ${game.state === 'COUNTDOWN' ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-2 sm:gap-3`}>
           {/* Timer Section - Only show in COUNTDOWN state */}
-          {game.state === 'COUNTDOWN' && (
+          {game.state === 'COUNTDOWN' && countdown !== null && (
             <div className="lg:col-span-1">
               <div className="bg-blue-700 rounded-lg p-2 sm:p-3 flex flex-col items-center justify-center min-h-[100px] sm:min-h-[120px] border-2 border-blue-500">
                 <div className="text-white text-xs sm:text-sm font-semibold mb-1">TIMER</div>
-                {countdown !== null ? (
-                  <div className="text-white text-2xl sm:text-4xl font-bold">{countdown}</div>
-                ) : (
-                  <div className="text-white text-lg sm:text-xl font-bold">WAITING</div>
-                )}
+                <div className="text-white text-2xl sm:text-4xl font-bold">{countdown}</div>
               </div>
             </div>
           )}
@@ -397,12 +485,12 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
             </div>
           </div>
 
-          {/* Drawn Numbers in Row Format */}
+          {/* Recent 5 Drawn Numbers */}
           <div className="lg:col-span-1">
-            <div className="text-white text-xs sm:text-sm font-bold mb-4 mt-2 sm:mt-3">Drawn Numbers</div>
+            <div className="text-white text-xs sm:text-sm font-bold mb-4 mt-2 sm:mt-3">Recent 5</div>
             <div className="flex flex-wrap gap-1.5 mb-2 sm:mb-3">
               {drawnNumbers.length > 0 ? (
-                [...drawnNumbers].reverse().map((drawn, idx) => {
+                [...drawnNumbers].slice(-5).reverse().map((drawn, idx) => {
                   const colors: Record<string, string> = {
                     'B': 'bg-pink-500',
                     'I': 'bg-green-400',
