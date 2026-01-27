@@ -346,28 +346,53 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
     setClaimingBingo(true);
 
     try {
-      // Get marked numbers array for backend verification
-      const markedNumbersArray = Array.from(markedNumbers).map(key => {
-        const [letter, number] = key.split('-');
-        return { letter, number: parseInt(number) };
-      });
+      // Convert marked numbers to card position indices (0-24)
+      // The card is a 5x5 grid, so we need to find the position of each marked number
+      const markedIndices: number[] = [];
+      
+      for (let row = 0; row < 5; row++) {
+        for (let col = 0; col < 5; col++) {
+          const cardNumber = playerCardNumbers[row][col];
+          const letter = ['B', 'I', 'N', 'G', 'O'][col];
+          const key = `${letter}-${cardNumber}`;
+          
+          // Skip center square (always marked)
+          if (row === 2 && col === 2 && cardNumber === 0) {
+            continue;
+          }
+          
+          // If this number is marked, add its index
+          if (markedNumbers.has(key)) {
+            const index = row * 5 + col;
+            markedIndices.push(index);
+          }
+        }
+      }
 
       const response = await axios.post(
-        `${API_URL}/api/v1/games/${currentGameId}/claim-bingo`,
+        `${API_URL}/api/v1/games/${currentGameId}/bingo`,
         {
           user_id: user.id,
-          marked_numbers: markedNumbersArray,
+          marked_numbers: markedIndices,
         }
       );
 
       if (response.data.winner) {
-        alert(`Congratulations! You won ${response.data.prize} ETB!`);
+        alert(response.data.message || 'Congratulations! You won!');
+        setCurrentView('selection');
+      } else {
+        alert(response.data.message || 'Invalid bingo claim. You have been eliminated.');
         setCurrentView('selection');
       }
     } catch (err: any) {
       console.error('Error claiming bingo:', err);
-      const errorMessage = err.response?.data?.error || err.response?.data?.message || 'Failed to claim bingo';
+      const errorMessage = err.response?.data?.message || err.response?.data?.error || 'Failed to claim bingo';
       alert(errorMessage);
+      
+      // If the error response indicates elimination, navigate back to selection
+      if (err.response?.data?.winner === false) {
+        setCurrentView('selection');
+      }
     } finally {
       setClaimingBingo(false);
     }

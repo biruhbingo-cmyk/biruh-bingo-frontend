@@ -18,6 +18,9 @@ const GAME_TYPES = [
   { type: 'G7', bet: 200 },
 ];
 
+// Module-level WebSocket store that persists across component mounts/unmounts
+const globalSockets = new Map<string, WebSocket>();
+
 interface GameSelectionProps {
   user: User;
   wallet: Wallet;
@@ -28,8 +31,8 @@ export default function GameSelection({ user, wallet }: GameSelectionProps) {
   const [countdowns, setCountdowns] = useState<Record<string, number | null>>({});
   const { setCurrentView, setSelectedGameType, setSelectedGameTypeString, setCurrentGameId } = useGameStore();
   
-  // Store WebSocket connections for each game type
-  const socketsRef = useRef<Map<string, WebSocket>>(new Map());
+  // Store message handlers for this component instance
+  const handlersRef = useRef<Map<string, (event: MessageEvent) => void>>(new Map());
 
   // Fetch initial games data
   useEffect(() => {
@@ -52,171 +55,207 @@ export default function GameSelection({ user, wallet }: GameSelectionProps) {
     // Ensure WS_URL doesn't have trailing slash
     const baseUrl = WS_URL.endsWith('/') ? WS_URL.slice(0, -1) : WS_URL;
     
-    gameTypes.forEach((gameType) => {
-      const wsUrl = `${baseUrl}/api/v1/ws/game?type=${gameType}`;
-      
+    // Message handler function for this component instance
+    const handleMessage = (gameType: string, event: MessageEvent) => {
       try {
-        const ws = new WebSocket(wsUrl);
-        socketsRef.current.set(gameType, ws);
-
-        ws.onopen = () => {
-          console.log(`✅ Connected to WebSocket for ${gameType}`);
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const message: WebSocketMessage = JSON.parse(event.data);
-            
-            switch (message.event) {
-              case 'INITIAL_STATE':
-                if (message.data.game) {
-                  setGames((prev) => {
-                    const exists = prev.some((g) => g.id === message.data.game.id);
-                    if (!exists) {
-                      return [...prev, message.data.game];
-                    }
-                    return prev.map((g) => 
-                      g.id === message.data.game.id ? message.data.game : g
-                    );
-                  });
+        const message: WebSocketMessage = JSON.parse(event.data);
+        
+        switch (message.event) {
+          case 'INITIAL_STATE':
+            if (message.data.game) {
+              setGames((prev) => {
+                const exists = prev.some((g) => g.id === message.data.game.id);
+                if (!exists) {
+                  return [...prev, message.data.game];
                 }
-                break;
-
-              case 'GAME_STATUS':
-                if (message.data.state) {
-                  console.log(`🔄 Game status for ${gameType}:`, message.data.state, 'Player count:', message.data.player_count);
-                  setGames((prev) => {
-                    const gameIndex = prev.findIndex((g) => g.game_type === gameType);
-                    if (gameIndex !== -1) {
-                      const updated = [...prev];
-                      updated[gameIndex] = {
-                        ...updated[gameIndex],
-                        state: message.data.state,
-                        player_count: message.data.player_count ?? updated[gameIndex].player_count,
-                        prize_pool: message.data.prize_pool ?? updated[gameIndex].prize_pool,
-                        countdown_ends: message.data.countdown_ends ?? updated[gameIndex].countdown_ends,
-                      };
-                      console.log(`📊 Updated game ${gameType}:`, updated[gameIndex]);
-                      return updated;
-                    }
-                    return prev;
-                  });
-                }
-                break;
-
-              case 'PLAYER_COUNT':
-                if (message.data.count !== undefined) {
-                  console.log(`👥 Player count for ${gameType}:`, message.data.count);
-                  setGames((prev) => {
-                    const gameIndex = prev.findIndex((g) => g.game_type === gameType);
-                    if (gameIndex !== -1) {
-                      const updated = [...prev];
-                      updated[gameIndex] = {
-                        ...updated[gameIndex],
-                        player_count: message.data.count,
-                      };
-                      console.log(`📊 Updated player count for ${gameType}:`, updated[gameIndex]);
-                      return updated;
-                    }
-                    return prev;
-                  });
-                }
-                break;
-
-              case 'PLAYER_JOINED':
-              case 'PLAYER_LEFT':
-                console.log(`👥 Player ${message.event} for ${gameType}:`, message.data);
-                setGames((prev) => {
-                  const gameIndex = prev.findIndex((g) => g.game_type === gameType);
-                  
-                  // If game doesn't exist, wait for INITIAL_STATE to create it
-                  if (gameIndex === -1) {
-                    console.log(`⚠️ Game ${gameType} not found in state, waiting for INITIAL_STATE`);
-                    return prev;
-                  }
-                  
-                  const updated = [...prev];
-                  const currentGame = updated[gameIndex];
-                  
-                  // If count is provided, use it; otherwise increment/decrement manually
-                  let newPlayerCount: number;
-                  if (message.data.count !== undefined) {
-                    newPlayerCount = message.data.count;
-                  } else {
-                    // Manually increment for JOINED, decrement for LEFT
-                    if (message.event === 'PLAYER_JOINED') {
-                      newPlayerCount = (currentGame.player_count || 0) + 1;
-                    } else {
-                      newPlayerCount = Math.max(0, (currentGame.player_count || 0) - 1);
-                    }
-                  }
-                  
-                  updated[gameIndex] = {
-                    ...currentGame,
-                    player_count: newPlayerCount,
-                    prize_pool: message.data.prize_pool ?? currentGame.prize_pool,
-                  };
-                  console.log(`📊 Updated ${message.event} for ${gameType}: player_count=${newPlayerCount}`, updated[gameIndex]);
-                  return updated;
-                });
-                break;
-
-              case 'COUNTDOWN':
-                if (message.data.secondsLeft !== undefined) {
-                  console.log(`⏰ Countdown for ${gameType}:`, message.data.secondsLeft);
-                  setGames((prev) => {
-                    const gameIndex = prev.findIndex((g) => g.game_type === gameType);
-                    if (gameIndex !== -1) {
-                      const game = prev[gameIndex];
-                      // Update countdown in the countdowns state
-                      setCountdowns((prevCountdowns) => ({
-                        ...prevCountdowns,
-                        [game.id]: message.data.secondsLeft,
-                      }));
-                      // Also update countdown_ends if provided
-                      if (message.data.countdown_ends) {
-                        const updated = [...prev];
-                        updated[gameIndex] = {
-                          ...updated[gameIndex],
-                          countdown_ends: message.data.countdown_ends,
-                        };
-                        return updated;
-                      }
-                    }
-                    return prev;
-                  });
-                }
-                break;
-
-              default:
-                break;
+                return prev.map((g) => 
+                  g.id === message.data.game.id ? message.data.game : g
+                );
+              });
             }
-          } catch (error) {
-            console.error(`Error parsing WebSocket message for ${gameType}:`, error);
-          }
-        };
+            break;
 
-        ws.onerror = (error) => {
-          console.error(`WebSocket error for ${gameType}:`, error);
-        };
+          case 'GAME_STATUS':
+            if (message.data.state) {
+              console.log(`🔄 Game status for ${gameType}:`, message.data.state, 'Player count:', message.data.player_count);
+              setGames((prev) => {
+                const gameIndex = prev.findIndex((g) => g.game_type === gameType);
+                if (gameIndex !== -1) {
+                  const updated = [...prev];
+                  updated[gameIndex] = {
+                    ...updated[gameIndex],
+                    state: message.data.state,
+                    player_count: message.data.player_count ?? updated[gameIndex].player_count,
+                    prize_pool: message.data.prize_pool ?? updated[gameIndex].prize_pool,
+                    countdown_ends: message.data.countdown_ends ?? updated[gameIndex].countdown_ends,
+                  };
+                  console.log(`📊 Updated game ${gameType}:`, updated[gameIndex]);
+                  return updated;
+                }
+                return prev;
+              });
+            }
+            break;
 
-        ws.onclose = () => {
-          console.log(`WebSocket closed for ${gameType}`);
-          socketsRef.current.delete(gameType);
-        };
+          case 'PLAYER_COUNT':
+            if (message.data.count !== undefined) {
+              console.log(`👥 Player count for ${gameType}:`, message.data.count);
+              setGames((prev) => {
+                const gameIndex = prev.findIndex((g) => g.game_type === gameType);
+                if (gameIndex !== -1) {
+                  const updated = [...prev];
+                  updated[gameIndex] = {
+                    ...updated[gameIndex],
+                    player_count: message.data.count,
+                  };
+                  console.log(`📊 Updated player count for ${gameType}:`, updated[gameIndex]);
+                  return updated;
+                }
+                return prev;
+              });
+            }
+            break;
+
+          case 'PLAYER_JOINED':
+          case 'PLAYER_LEFT':
+            console.log(`👥 Player ${message.event} for ${gameType}:`, message.data);
+            setGames((prev) => {
+              const gameIndex = prev.findIndex((g) => g.game_type === gameType);
+              
+              // If game doesn't exist, wait for INITIAL_STATE to create it
+              if (gameIndex === -1) {
+                console.log(`⚠️ Game ${gameType} not found in state, waiting for INITIAL_STATE`);
+                return prev;
+              }
+              
+              const updated = [...prev];
+              const currentGame = updated[gameIndex];
+              
+              // If count is provided, use it; otherwise increment/decrement manually
+              let newPlayerCount: number;
+              if (message.data.count !== undefined) {
+                newPlayerCount = message.data.count;
+              } else {
+                // Manually increment for JOINED, decrement for LEFT
+                if (message.event === 'PLAYER_JOINED') {
+                  newPlayerCount = (currentGame.player_count || 0) + 1;
+                } else {
+                  newPlayerCount = Math.max(0, (currentGame.player_count || 0) - 1);
+                }
+              }
+              
+              updated[gameIndex] = {
+                ...currentGame,
+                player_count: newPlayerCount,
+                prize_pool: message.data.prize_pool ?? currentGame.prize_pool,
+              };
+              console.log(`📊 Updated ${message.event} for ${gameType}: player_count=${newPlayerCount}`, updated[gameIndex]);
+              return updated;
+            });
+            break;
+
+          case 'COUNTDOWN':
+            if (message.data.secondsLeft !== undefined) {
+              console.log(`⏰ Countdown for ${gameType}:`, message.data.secondsLeft);
+              setGames((prev) => {
+                const gameIndex = prev.findIndex((g) => g.game_type === gameType);
+                if (gameIndex !== -1) {
+                  const game = prev[gameIndex];
+                  // Update countdown in the countdowns state
+                  setCountdowns((prevCountdowns) => ({
+                    ...prevCountdowns,
+                    [game.id]: message.data.secondsLeft,
+                  }));
+                  // Also update countdown_ends if provided
+                  if (message.data.countdown_ends) {
+                    const updated = [...prev];
+                    updated[gameIndex] = {
+                      ...updated[gameIndex],
+                      countdown_ends: message.data.countdown_ends,
+                    };
+                    return updated;
+                  }
+                }
+                return prev;
+              });
+            }
+            break;
+
+          default:
+            break;
+        }
       } catch (error) {
-        console.error(`Failed to create WebSocket for ${gameType}:`, error);
+        console.error(`Error parsing WebSocket message for ${gameType}:`, error);
       }
+    };
+
+    // Create or reuse WebSocket connections
+    gameTypes.forEach((gameType) => {
+      let ws = globalSockets.get(gameType);
+      
+      // Create new connection if it doesn't exist or is closed
+      if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+        const wsUrl = `${baseUrl}/api/v1/ws/game?type=${gameType}`;
+        
+        try {
+          ws = new WebSocket(wsUrl);
+          globalSockets.set(gameType, ws);
+
+          ws.onopen = () => {
+            console.log(`✅ Connected to WebSocket for ${gameType}`);
+          };
+
+          ws.onerror = (error) => {
+            console.error(`WebSocket error for ${gameType}:`, error);
+          };
+
+          ws.onclose = () => {
+            console.log(`WebSocket closed for ${gameType}`);
+            // Remove from global store if closed
+            if (globalSockets.get(gameType) === ws) {
+              globalSockets.delete(gameType);
+            }
+          };
+        } catch (error) {
+          console.error(`Failed to create WebSocket for ${gameType}:`, error);
+          return;
+        }
+      }
+
+      // Add message handler for this component instance
+      const messageHandler = (event: MessageEvent) => handleMessage(gameType, event);
+      ws.addEventListener('message', messageHandler);
+      
+      // Store handler reference for cleanup
+      handlersRef.current.set(gameType, messageHandler);
     });
 
-    // Cleanup: close all WebSocket connections
+    // Cleanup: remove message handlers when component unmounts (but keep WebSockets open)
     return () => {
-      socketsRef.current.forEach((ws, gameType) => {
+      handlersRef.current.forEach((handler, gameType) => {
+        const ws = globalSockets.get(gameType);
+        if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+          ws.removeEventListener('message', handler);
+        }
+      });
+      handlersRef.current.clear();
+    };
+  }, []);
+
+  // Cleanup WebSockets only when page is unloading
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      globalSockets.forEach((ws, gameType) => {
         if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
           ws.close();
         }
       });
-      socketsRef.current.clear();
+      globalSockets.clear();
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, []);
 
@@ -337,18 +376,18 @@ export default function GameSelection({ user, wallet }: GameSelectionProps) {
           return (
             <div
               key={gameType.type}
-              className="bg-[#1e3a5f] rounded-lg p-2 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4"
+              className="bg-[#1e3a5f] rounded-lg p-2 sm:p-5 flex flex-row items-center justify-between gap-3 sm:gap-5 flex-nowrap"
             >
               {/* Left Side - Game Info */}
-              <div className="flex-1 w-full sm:w-auto">
+              <div className="flex-1 min-w-0">
                 {/* Bet Amount and Status */}
-                <div className="flex items-center gap-2 sm:gap-3 mb-1 sm:mb-2 flex-wrap">
-                  <span className="text-lg sm:text-2xl font-bold text-white">{betAmount} ብር</span>
-                  <span className={`${getStatusColor(state)} text-white text-xs sm:text-sm px-1.5 sm:px-2 py-0.5 sm:py-1 rounded font-bold`}>
+                <div className="flex items-center gap-2 sm:gap-3 mb-1.5 sm:mb-2 flex-wrap">
+                  <span className="text-xl sm:text-2xl font-bold text-white">{betAmount} ብር</span>
+                  <span className={`${getStatusColor(state)} text-white text-sm sm:text-base px-2 sm:px-2.5 py-0.5 sm:py-1 rounded font-bold`}>
                     {getStatusLabel(state)}
                   </span>
                   {state === 'COUNTDOWN' && countdown !== null && (
-                    <span className="bg-red-500/20 text-red-400 text-xs sm:text-sm px-1.5 sm:px-2 py-0.5 sm:py-1 rounded font-mono font-bold">
+                    <span className="bg-red-500/20 text-red-400 text-sm sm:text-base px-2 sm:px-2.5 py-0.5 sm:py-1 rounded font-mono font-bold">
                       {countdown}s
                     </span>
                   )}
@@ -357,13 +396,13 @@ export default function GameSelection({ user, wallet }: GameSelectionProps) {
                 {/* Player Count and Potential Win */}
                 <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
                   <div className="flex items-center gap-1 sm:gap-1.5">
-                    <svg className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-4 h-4 sm:w-4 sm:h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
                       <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
                     </svg>
-                    <span className="text-sm sm:text-base text-gray-300 font-bold">{playerCount > 0 ? playerCount : '-'} players</span>
+                    <span className="text-base sm:text-lg text-gray-300 font-bold">{playerCount > 0 ? playerCount : '-'} players</span>
                   </div>
-                  <div className="bg-yellow-500/20 text-yellow-400 text-xs sm:text-sm px-1.5 sm:px-2 py-0.5 sm:py-1 rounded font-bold">
-                    {potentialWin > 0 ? `${potentialWin.toFixed(2)} ብር` : '- ብር'}
+                  <div className="bg-yellow-500/20 text-yellow-400 text-sm sm:text-base px-2 sm:px-2.5 py-0.5 sm:py-1 rounded font-bold">
+                    {potentialWin > 0 ? `${potentialWin.toFixed(2)} ብር ደራሽ` : '- ብር ደራሽ'}
                   </div>
                 </div>
               </div>
@@ -375,7 +414,7 @@ export default function GameSelection({ user, wallet }: GameSelectionProps) {
                   handleGameClick(game, betAmount, gameType.type);
                 }}
                 disabled={!canJoin}
-                className={`w-full sm:w-auto px-4 sm:px-6 py-2 sm:py-3 rounded-lg font-bold text-base sm:text-lg flex items-center justify-center gap-2 transition-all ${
+                className={`px-4 sm:px-6 py-2 sm:py-3 rounded-lg font-bold text-lg sm:text-xl flex items-center justify-center gap-2 transition-all flex-shrink-0 whitespace-nowrap ${
                   canJoin
                     ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600 cursor-pointer'
                     : 'bg-gray-600 text-gray-400 cursor-not-allowed opacity-50'

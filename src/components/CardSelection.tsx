@@ -245,7 +245,7 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
           
           {/* Potential Win */}
           <div className="bg-yellow-400/30 text-yellow-200 px-2 sm:px-3 py-1 sm:py-1.5 rounded font-bold text-xs sm:text-sm border border-yellow-300">
-            {game ? `${calculatePotentialWin(game).toFixed(2)} ብር` : '- ብር'}
+            {game ? `${calculatePotentialWin(game).toFixed(2)} ብር ደራሽ` : '- ብር ደራሽ'}
           </div>
         </div>
         
