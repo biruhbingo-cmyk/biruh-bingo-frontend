@@ -27,6 +27,7 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
   const [selectedCardData, setSelectedCardData] = useState<CardData | null>(null);
   const [joining, setJoining] = useState(false);
   const [game, setGame] = useState<Game | null>(null);
+  const [takenCards, setTakenCards] = useState<Set<number>>(new Set());
   
   const { setCurrentView, setSelectedCardId: setStoreCardId, currentGameId, selectedGameType, selectedGameTypeString } = useGameStore();
 
@@ -40,6 +41,10 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
         try {
           const gameState = await getGameState(currentGameId);
           setGame(gameState.game);
+          // Set initial taken cards
+          if (gameState.takenCards && Array.isArray(gameState.takenCards)) {
+            setTakenCards(new Set(gameState.takenCards));
+          }
         } catch (error) {
           console.error('Error fetching game data:', error);
         }
@@ -62,6 +67,10 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
             if (message.data.game) {
               setGame(message.data.game);
             }
+            // Update taken cards from initial state
+            if (message.data.takenCards && Array.isArray(message.data.takenCards)) {
+              setTakenCards(new Set(message.data.takenCards));
+            }
             break;
 
           case 'GAME_STATUS':
@@ -82,22 +91,15 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
             break;
 
           case 'PLAYER_JOINED':
-          case 'PLAYER_LEFT':
-            // Update player count when players join/leave
+            // Update player count and add card to taken cards
             setGame((prev) => {
               if (!prev) return null;
               
-              // If count is provided, use it; otherwise increment/decrement manually
               let newPlayerCount: number;
               if (message.data.count !== undefined) {
                 newPlayerCount = message.data.count;
               } else {
-                // Manually increment for JOINED, decrement for LEFT
-                if (message.event === 'PLAYER_JOINED') {
-                  newPlayerCount = (prev.player_count || 0) + 1;
-                } else {
-                  newPlayerCount = Math.max(0, (prev.player_count || 0) - 1);
-                }
+                newPlayerCount = (prev.player_count || 0) + 1;
               }
               
               return {
@@ -106,6 +108,38 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
                 prize_pool: message.data.prize_pool ?? prev.prize_pool,
               };
             });
+            // Add card to taken cards if card_id is provided
+            if (message.data.card_id !== undefined) {
+              setTakenCards((prev) => new Set([...prev, message.data.card_id]));
+            }
+            break;
+
+          case 'PLAYER_LEFT':
+            // Update player count when players leave
+            setGame((prev) => {
+              if (!prev) return null;
+              
+              let newPlayerCount: number;
+              if (message.data.count !== undefined) {
+                newPlayerCount = message.data.count;
+              } else {
+                newPlayerCount = Math.max(0, (prev.player_count || 0) - 1);
+              }
+              
+              return {
+                ...prev,
+                player_count: newPlayerCount,
+                prize_pool: message.data.prize_pool ?? prev.prize_pool,
+              };
+            });
+            // Remove card from taken cards if card_id is provided
+            if (message.data.card_id !== undefined) {
+              setTakenCards((prev) => {
+                const newSet = new Set(prev);
+                newSet.delete(message.data.card_id);
+                return newSet;
+              });
+            }
             break;
 
           case 'COUNTDOWN':
@@ -114,7 +148,10 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
             break;
 
           case 'CARDS_TAKEN':
-            // Cards taken updates - could be used for UI updates
+            // Update taken cards list
+            if (message.data.takenCards && Array.isArray(message.data.takenCards)) {
+              setTakenCards(new Set(message.data.takenCards));
+            }
             break;
 
           case 'NUMBER_DRAWN':
@@ -224,8 +261,8 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
         </div>
       </div>
 
-      {/* Main Content - Scrollable if needed */}
-      <div className="flex-1 overflow-y-auto px-2 sm:px-4 py-2 bg-blue-600">
+      {/* Main Content - Scrollable */}
+      <div className="flex-1 overflow-y-auto px-2 sm:px-4 py-2 bg-blue-600 min-h-0">
         {/* Game Info Row */}
         <div className="bg-blue-500 rounded-lg p-2 sm:p-3 mb-2 sm:mb-3 flex items-center justify-between border border-blue-400">
           <div className="flex items-center gap-2 sm:gap-4">
@@ -249,107 +286,107 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
           </div>
         </div>
         
-        {/* Cards Grid and Bingo Card - Side by side on larger screens */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 mb-3">
-          {/* Cards Grid - Takes 2 columns on large screens */}
-          <div className="lg:col-span-2">
-            <div className="grid grid-cols-10 gap-1 sm:gap-1.5">
-              {CARD_IDS.map((cardId) => {
-                const isSelected = selectedCardId === cardId;
-                return (
-                  <button
-                    key={cardId}
-                    onClick={() => handleCardClick(cardId)}
-                    className={`aspect-square rounded-lg border-2 transition-all text-xs sm:text-sm font-bold ${
-                      isSelected
-                        ? 'bg-red-500 border-red-600 text-white ring-2 ring-red-400 shadow-lg'
-                        : 'bg-gradient-to-br from-blue-400 to-blue-600 text-white hover:bg-blue-500 hover:border-blue-200 shadow'
-                    }`}
-                  >
-                    {cardId}
-                  </button>
-                );
-              })}
-            </div>
+        {/* 10x10 Cards Grid - Square */}
+        <div className="flex justify-center mb-3">
+          <div className="grid grid-cols-10 gap-1 sm:gap-1.5 w-full max-w-[min(90vw,500px)] aspect-square">
+            {CARD_IDS.map((cardId) => {
+              const isSelected = selectedCardId === cardId;
+              const isTaken = takenCards.has(cardId) && !isSelected;
+              
+              return (
+                <button
+                  key={cardId}
+                  onClick={() => handleCardClick(cardId)}
+                  className={`aspect-square rounded-lg border-2 transition-all text-xs sm:text-sm font-bold ${
+                    isSelected
+                      ? 'bg-red-500 border-red-600 text-white ring-2 ring-red-400 shadow-lg scale-105 z-10'
+                      : isTaken
+                      ? 'bg-gradient-to-br from-blue-400 to-blue-600 text-white border-red-500 shadow hover:bg-blue-500'
+                      : 'bg-gradient-to-br from-blue-400 to-blue-600 text-white hover:bg-blue-500 hover:border-blue-200 shadow'
+                  }`}
+                >
+                  {cardId}
+                </button>
+              );
+            })}
           </div>
+        </div>
 
-          {/* Selected Card Preview - Takes 1 column on large screens */}
-          {selectedCardData && (
-            <div className="lg:col-span-1 flex flex-col items-center">
-              <h3 className="text-sm sm:text-base font-bold mb-1 sm:mb-2 text-white">Card: {selectedCardData.id}</h3>
-              <div className="bg-white rounded-lg p-1 sm:p-1.5 w-full max-w-[200px] sm:max-w-[250px] shadow-lg border-2 border-blue-300">
-                {/* Header Row - B I N G O */}
-                <div className="grid grid-cols-5 gap-1 sm:gap-1.5 mb-1 sm:mb-1.5">
-                  {(['B', 'I', 'N', 'G', 'O'] as const).map((letter, idx) => {
-                    const colors = ['bg-pink-500', 'bg-green-500', 'bg-blue-600', 'bg-orange-500', 'bg-red-500'];
+        {/* Selected Card Preview */}
+        {selectedCardData && (
+          <div className="flex flex-col items-center mb-3">
+            <div className="bg-white rounded-lg p-1 sm:p-1.5 w-full max-w-[calc((min(90vw,500px))/2-0.5*0.25rem)] sm:max-w-[calc((min(90vw,500px))/2-0.5*0.375rem)] shadow-lg border-2 border-blue-300">
+              {/* Header Row - B I N G O */}
+              <div className="grid grid-cols-5 gap-1 sm:gap-1.5 mb-1 sm:mb-1.5">
+                {(['B', 'I', 'N', 'G', 'O'] as const).map((letter, idx) => {
+                  const colors = ['bg-pink-500', 'bg-green-500', 'bg-blue-600', 'bg-orange-500', 'bg-red-500'];
+                  return (
+                    <div
+                      key={letter}
+                      className={`aspect-square text-center font-bold text-xs sm:text-sm flex items-center justify-center ${colors[idx]} text-white rounded-lg shadow`}
+                    >
+                      {letter}
+                    </div>
+                  );
+                })}
+              </div>
+              
+              {/* Card Numbers Grid */}
+              <div className="grid grid-cols-5 gap-1 sm:gap-1.5">
+                {selectedCardData.numbers.map((row, rowIndex) => (
+                  row.map((number, colIndex) => {
+                    const isCenter = rowIndex === 2 && colIndex === 2;
+                    const displayValue = isCenter && number === 0 ? '#' : number;
+                    
                     return (
                       <div
-                        key={letter}
-                        className={`aspect-square text-center font-bold text-xs sm:text-sm flex items-center justify-center ${colors[idx]} text-white rounded-lg shadow`}
+                        key={`${rowIndex}-${colIndex}`}
+                        className={`aspect-square rounded-lg border-2 flex items-center justify-center font-bold text-xs sm:text-sm ${
+                          isCenter && number === 0
+                            ? 'bg-gray-800 text-white border-gray-700'
+                            : 'bg-white text-gray-900 border-gray-300'
+                        }`}
                       >
-                        {letter}
+                        {displayValue}
                       </div>
                     );
-                  })}
-                </div>
-                
-                {/* Card Numbers Grid */}
-                <div className="grid grid-cols-5 gap-1 sm:gap-1.5">
-                  {selectedCardData.numbers.map((row, rowIndex) => (
-                    row.map((number, colIndex) => {
-                      const isCenter = rowIndex === 2 && colIndex === 2;
-                      const displayValue = isCenter && number === 0 ? '#' : number;
-                      
-                      return (
-                        <div
-                          key={`${rowIndex}-${colIndex}`}
-                          className={`aspect-square rounded-lg border-2 flex items-center justify-center font-bold text-xs sm:text-sm ${
-                            isCenter && number === 0
-                              ? 'bg-gray-800 text-white border-gray-700'
-                              : 'bg-white text-gray-900 border-gray-300'
-                          }`}
-                        >
-                          {displayValue}
-                        </div>
-                      );
-                    })
-                  ))}
-                </div>
+                  })
+                ))}
               </div>
             </div>
-          )}
-        </div>
-
-        {/* Join Button - Not fixed, part of flow */}
-        <div className="mt-3 sm:mt-4">
-          <button
-            onClick={handleJoinGame}
-            disabled={!selectedCardId || joining}
-            className={`w-full py-2.5 sm:py-3 rounded-lg font-bold text-base sm:text-lg flex items-center justify-center gap-2 transition-all shadow-lg ${
-              selectedCardId && !joining
-                ? 'bg-gradient-to-r from-blue-400 via-blue-500 to-yellow-400 text-white hover:from-blue-500 hover:via-blue-600 hover:to-yellow-500'
-                : 'bg-gray-500 text-gray-300 cursor-not-allowed'
-            }`}
-          >
-            {joining ? (
-              <>
-                <svg className="animate-spin h-4 w-4 sm:h-5 sm:w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span>Joining...</span>
-              </>
-            ) : (
-              <>
-                <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-                </svg>
-                <span>ወደ ጨዋታው ይግቡ</span>
-              </>
-            )}
-          </button>
-        </div>
+          </div>
+        )}
       </div>
+
+      {/* Join Button - Fixed Footer */}
+      <footer className="p-4 bg-blue-600 border-t border-blue-500/50 flex-shrink-0">
+        <button
+          onClick={handleJoinGame}
+          disabled={!selectedCardId || joining}
+          className={`w-full py-2.5 sm:py-3 rounded-lg font-bold text-base sm:text-lg flex items-center justify-center gap-2 transition-all shadow-lg ${
+            selectedCardId && !joining
+              ? 'bg-gradient-to-r from-blue-400 via-blue-500 to-yellow-400 text-white hover:from-blue-500 hover:via-blue-600 hover:to-yellow-500'
+              : 'bg-gray-500 text-gray-300 cursor-not-allowed'
+          }`}
+        >
+          {joining ? (
+            <>
+              <svg className="animate-spin h-4 w-4 sm:h-5 sm:w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span>Joining...</span>
+            </>
+          ) : (
+            <>
+              <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+              </svg>
+              <span>ወደ ጨዋታው ይግቡ</span>
+            </>
+          )}
+        </button>
+      </footer>
     </main>
   );
 }
