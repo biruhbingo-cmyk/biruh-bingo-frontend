@@ -27,7 +27,7 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
   const [countdown, setCountdown] = useState<number | null>(null);
   const [claimingBingo, setClaimingBingo] = useState(false);
   const [leaving, setLeaving] = useState(false);
-  const [winnerPopup, setWinnerPopup] = useState<{ show: boolean; message: string; prize?: number } | null>(null);
+  const [winnerPopup, setWinnerPopup] = useState<{ show: boolean; message: string; prize?: number; winnerName?: string } | null>(null);
   
   const { currentGameId, selectedGameTypeString, selectedCardId, setCurrentView } = useGameStore();
   
@@ -240,16 +240,22 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
             break;
 
           case 'WINNER':
+            // Show popup for all players in the game
             if (message.data.user_id === user.id) {
               setWinnerPopup({
                 show: true,
                 message: 'Congratulations! You won!',
                 prize: message.data.prize,
+                winnerName: `${user.first_name} ${user.last_name || ''}`.trim(),
               });
             } else {
+              // Show winner's name if available, otherwise show generic message
+              const winnerName = message.data.winner_name || message.data.user_name || 'Another player';
               setWinnerPopup({
                 show: true,
-                message: 'Game finished. Another player won.',
+                message: `${winnerName} won the game!`,
+                prize: message.data.prize,
+                winnerName: winnerName,
               });
             }
             // Redirect after 2 seconds
@@ -487,18 +493,20 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
     <main className="min-h-screen bg-blue-600 text-white flex flex-col relative">
       {/* Winner Popup */}
       {winnerPopup && winnerPopup.show && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 sm:p-8 max-w-md mx-4 text-center">
+        <div className="fixed inset-0 bg-blue-600 bg-opacity-95 flex items-center justify-center z-50">
+          <div className="bg-blue-600 border-2 border-blue-400 rounded-lg p-6 sm:p-8 max-w-md mx-4 text-center shadow-xl">
             <div className="text-4xl sm:text-6xl mb-4">🎉</div>
-            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
+            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-2">
               {winnerPopup.message}
             </h2>
             {winnerPopup.prize && (
-              <p className="text-xl sm:text-2xl font-bold text-yellow-600 mb-4">
-                You won {winnerPopup.prize} ETB!
+              <p className="text-xl sm:text-2xl font-bold text-yellow-300 mb-4">
+                {winnerPopup.winnerName === `${user.first_name} ${user.last_name || ''}`.trim() 
+                  ? `You won ${winnerPopup.prize} ETB!`
+                  : `${winnerPopup.winnerName} won ${winnerPopup.prize} ETB!`}
               </p>
             )}
-            <p className="text-gray-600 text-sm sm:text-base">
+            <p className="text-blue-200 text-sm sm:text-base">
               Redirecting to game selection...
             </p>
           </div>

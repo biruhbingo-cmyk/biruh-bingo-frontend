@@ -52,7 +52,7 @@ function HomeContent() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-[#0a1929] text-white flex items-center justify-center">
+      <main className="min-h-screen bg-blue-600 text-white flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
           <p>Loading...</p>
@@ -63,7 +63,7 @@ function HomeContent() {
 
   if (error || !user || !wallet) {
     return (
-      <main className="min-h-screen bg-[#0a1929] text-white flex items-center justify-center">
+      <main className="min-h-screen bg-blue-600 text-white flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-4 text-red-400">Error</h1>
           <p className="text-gray-400">{error || 'Failed to load user data'}</p>
@@ -88,7 +88,7 @@ function HomeContent() {
 export default function Home() {
   return (
     <Suspense fallback={
-      <main className="min-h-screen bg-[#0a1929] text-white flex items-center justify-center">
+      <main className="min-h-screen bg-blue-600 text-white flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
           <p>Loading...</p>

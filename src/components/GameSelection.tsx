@@ -901,7 +901,7 @@ export default function GameSelection({ user, wallet }: GameSelectionProps) {
   };
 
   return (
-    <main className="min-h-screen bg-[#0a1929] text-white">
+    <main className="min-h-screen bg-blue-600 text-white">
       <Header user={user} wallet={wallet} />
 
       {/* Game Selection List */}
@@ -926,7 +926,7 @@ export default function GameSelection({ user, wallet }: GameSelectionProps) {
           return (
             <div
               key={gameType.type}
-              className="bg-[#1e3a5f] rounded-lg p-2 sm:p-5 flex flex-row items-center justify-between gap-3 sm:gap-5 flex-nowrap"
+              className="bg-blue-500 rounded-lg p-2 sm:p-5 flex flex-row items-center justify-between gap-3 sm:gap-5 flex-nowrap"
             >
               {/* Left Side - Game Info */}
               <div className="flex-1 min-w-0">
