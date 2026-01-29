@@ -27,6 +27,7 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
   const [countdown, setCountdown] = useState<number | null>(null);
   const [claimingBingo, setClaimingBingo] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [winnerPopup, setWinnerPopup] = useState<{ show: boolean; message: string; prize?: number } | null>(null);
   
   const { currentGameId, selectedGameTypeString, selectedCardId, setCurrentView } = useGameStore();
   
@@ -240,11 +241,21 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
 
           case 'WINNER':
             if (message.data.user_id === user.id) {
-              alert(`Congratulations! You won ${message.data.prize} ETB!`);
+              setWinnerPopup({
+                show: true,
+                message: 'Congratulations! You won!',
+                prize: message.data.prize,
+              });
             } else {
-              alert('Game finished. Another player won.');
+              setWinnerPopup({
+                show: true,
+                message: 'Game finished. Another player won.',
+              });
             }
-            setCurrentView('selection');
+            // Redirect after 2 seconds
+            setTimeout(() => {
+              setCurrentView('selection');
+            }, 2000);
             break;
 
           case 'PLAYER_ELIMINATED':
@@ -378,8 +389,15 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
       );
 
       if (response.data.winner) {
-        alert(response.data.message || 'Congratulations! You won!');
-        setCurrentView('selection');
+        setWinnerPopup({
+          show: true,
+          message: response.data.message || 'Congratulations! You won!',
+          prize: response.data.prize,
+        });
+        // Redirect after 2 seconds
+        setTimeout(() => {
+          setCurrentView('selection');
+        }, 2000);
       } else {
         alert(response.data.message || 'Invalid bingo claim. You have been eliminated.');
         setCurrentView('selection');
@@ -466,30 +484,40 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
   }
 
   return (
-    <main className="min-h-screen bg-blue-600 text-white flex flex-col">
+    <main className="min-h-screen bg-blue-600 text-white flex flex-col relative">
+      {/* Winner Popup */}
+      {winnerPopup && winnerPopup.show && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 sm:p-8 max-w-md mx-4 text-center">
+            <div className="text-4xl sm:text-6xl mb-4">🎉</div>
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
+              {winnerPopup.message}
+            </h2>
+            {winnerPopup.prize && (
+              <p className="text-xl sm:text-2xl font-bold text-yellow-600 mb-4">
+                You won {winnerPopup.prize} ETB!
+              </p>
+            )}
+            <p className="text-gray-600 text-sm sm:text-base">
+              Redirecting to game selection...
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Top Header - Game Info */}
-      <div className="bg-blue-700 px-2 sm:px-4 py-2 flex items-center justify-between flex-wrap gap-2 text-xs sm:text-sm">
-        <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
-          <div>
-            <span className="text-blue-200">Game: </span>
-            <span className="font-bold text-white">{game.id.slice(0, 8).toUpperCase()}</span>
-          </div>
-          <div>
-            <span className="text-blue-200">Derash: </span>
-            <span className="font-bold text-yellow-300">{calculatePotentialWin(game).toFixed(2)} ETB</span>
-          </div>
-          <div>
-            <span className="text-blue-200">Bonus: </span>
-            <span className="font-bold text-white">-</span>
-          </div>
-          <div>
-            <span className="text-blue-200">Players: </span>
-            <span className="font-bold text-white">{game.player_count}</span>
-          </div>
-          <div>
-            <span className="text-blue-200">Bet: </span>
-            <span className="font-bold text-white">{game.bet_amount} ETB</span>
-          </div>
+      <div className="bg-blue-700 px-4 sm:px-8 py-2 w-full flex items-center justify-between text-xs sm:text-sm">
+        <div>
+          <span className="text-blue-200">Derash: </span>
+          <span className="font-bold text-yellow-300">{calculatePotentialWin(game).toFixed(2)} ETB</span>
+        </div>
+        <div>
+          <span className="text-blue-200">Players: </span>
+          <span className="font-bold text-white">{game.player_count}</span>
+        </div>
+        <div>
+          <span className="text-blue-200">Bet: </span>
+          <span className="font-bold text-white">{game.bet_amount} ETB</span>
         </div>
       </div>
 
@@ -517,136 +545,141 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
             </div>
           )}
 
-          {/* Main Bingo Board - Called Numbers */}
+          {/* Main Bingo Board - Called Numbers and Recent 5 Side by Side */}
           <div className={game.state === 'DRAWING' ? 'lg:col-span-2' : 'lg:col-span-2'}>
-            <div className="bg-blue-700 rounded-lg p-2 border-2 border-blue-500">
-              <div className="grid grid-cols-5 gap-1">
-                {['B', 'I', 'N', 'G', 'O'].map((letter, idx) => {
-                  const colors = ['bg-pink-500', 'bg-green-400', 'bg-blue-500', 'bg-orange-500', 'bg-red-500'];
-                  const ranges = [
-                    { start: 1, end: 15 },
-                    { start: 16, end: 30 },
-                    { start: 31, end: 45 },
-                    { start: 46, end: 60 },
-                    { start: 61, end: 75 },
-                  ];
-                  
-                  return (
-                    <div key={letter} className="flex flex-col">
-                      {/* Header */}
-                      <div className={`${colors[idx]} text-white font-bold text-xs p-1 rounded mb-1 text-center`}>
-                        {letter}
-                      </div>
-                      {/* Numbers */}
-                      <div className="space-y-0.5">
-                        {Array.from({ length: ranges[idx].end - ranges[idx].start + 1 }, (_, i) => {
-                          const number = ranges[idx].start + i;
-                          const key = `${letter}-${number}`;
-                          const isDrawn = drawnNumbersSet.has(key);
-                          
+            <div className="flex gap-2 sm:gap-3 h-full">
+              {/* 75 Bingo Numbers Grid */}
+              <div className="flex-1">
+                <div className="bg-blue-700 rounded-lg p-2 border-2 border-blue-500">
+                  <div className="grid grid-cols-5 gap-1">
+                    {['B', 'I', 'N', 'G', 'O'].map((letter, idx) => {
+                      const colors = ['bg-pink-500', 'bg-green-400', 'bg-blue-500', 'bg-orange-500', 'bg-red-500'];
+                      const ranges = [
+                        { start: 1, end: 15 },
+                        { start: 16, end: 30 },
+                        { start: 31, end: 45 },
+                        { start: 46, end: 60 },
+                        { start: 61, end: 75 },
+                      ];
+                      
+                      return (
+                        <div key={letter} className="flex flex-col">
+                          {/* Header */}
+                          <div className={`${colors[idx]} text-white font-bold text-sm p-1.5 rounded mb-1 text-center shadow-md`}>
+                            {letter}
+                          </div>
+                          {/* Numbers */}
+                          <div className="space-y-0.5">
+                            {Array.from({ length: ranges[idx].end - ranges[idx].start + 1 }, (_, i) => {
+                              const number = ranges[idx].start + i;
+                              const key = `${letter}-${number}`;
+                              const isDrawn = drawnNumbersSet.has(key);
+                              
+                              return (
+                                <div
+                                  key={number}
+                                  className={`text-[11px] sm:text-[12px] font-bold p-1.5 rounded text-center ${
+                                    isDrawn
+                                      ? 'bg-gray-900 text-white shadow-md'
+                                      : 'bg-blue-500 text-white shadow-sm'
+                                  }`}
+                                >
+                                  {number}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Recent 5 Drawn Numbers - Vertical Format with Bingo Card at Bottom */}
+              <div className="flex-shrink-0 flex flex-col h-full">
+                <div className="text-white text-xs sm:text-sm font-bold mb-2">Recent 5</div>
+                <div className="flex flex-col gap-1.5">
+                  {drawnNumbers.length > 0 ? (
+                    [...drawnNumbers].slice(-5).reverse().map((drawn, idx) => {
+                      const colors: Record<string, string> = {
+                        'B': 'bg-pink-500',
+                        'I': 'bg-green-400',
+                        'N': 'bg-blue-500',
+                        'G': 'bg-orange-500',
+                        'O': 'bg-red-500',
+                      };
+                      
+                      return (
+                        <div
+                          key={`${drawn.letter}-${drawn.number}-${idx}`}
+                          className={`${colors[drawn.letter]} text-white font-bold text-sm sm:text-base px-2 sm:px-3 py-1.5 sm:py-2 rounded text-center border-2 border-white shadow-md`}
+                        >
+                          {drawn.letter}-{drawn.number}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="text-blue-200 text-xs sm:text-sm">No numbers drawn yet</div>
+                  )}
+                </div>
+                
+                {/* Player's Bingo Card - At the bottom of this column */}
+                {playerCardNumbers && (
+                  <div className="mt-auto pt-4">
+                    <div className="bg-white rounded-lg p-1 border border-blue-300">
+                      <div className="grid grid-cols-5 gap-0.5">
+                        {/* Header Row */}
+                        {['B', 'I', 'N', 'G', 'O'].map((letter, idx) => {
+                          const colors = ['bg-pink-500', 'bg-green-400', 'bg-blue-500', 'bg-orange-500', 'bg-red-500'];
                           return (
                             <div
-                              key={number}
-                              className={`text-[10px] font-bold p-1 rounded text-center ${
-                                isDrawn
-                                  ? 'bg-gray-800 text-white'
-                                  : 'bg-blue-600 text-white'
-                              }`}
+                              key={letter}
+                              className={`${colors[idx]} text-white font-bold text-[7px] p-0.5 rounded text-center shadow-sm`}
                             >
-                              {number}
+                              {letter}
                             </div>
                           );
                         })}
+                        
+                        {/* Card Numbers */}
+                        {playerCardNumbers.map((row: number[], rowIndex: number) =>
+                          row.map((number: number, colIndex: number) => {
+                            const letter = ['B', 'I', 'N', 'G', 'O'][colIndex];
+                            const isCenter = rowIndex === 2 && colIndex === 2 && number === 0;
+                            const key = `${letter}-${number}`;
+                            const isMarked = markedNumbers.has(key);
+                            const isDrawn = drawnNumbersSet.has(key);
+                            
+                            return (
+                              <button
+                                key={`${rowIndex}-${colIndex}`}
+                                onClick={() => !isCenter && isDrawn && handleMarkNumber(letter, number)}
+                                disabled={isCenter || !isDrawn}
+                                className={`w-7 h-7 sm:w-9 sm:h-9 rounded border-2 flex items-center justify-center font-bold text-[8px] sm:text-[9px] transition-all ${
+                                  isCenter
+                                    ? 'bg-gray-900 text-white border-gray-800 cursor-default shadow-inner'
+                                    : isMarked
+                                    ? 'bg-gray-900 text-white border-gray-800 shadow-inner'
+                                    : 'bg-white text-black border-gray-400 cursor-default shadow-sm'
+                                }`}
+                              >
+                                {isCenter ? '#' : number}
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+                      <div className="text-center mt-0.5 text-gray-900 font-bold text-[7px] sm:text-[8px]">
+                        BOARD NUMBER {selectedCardId}
                       </div>
                     </div>
-                  );
-                })}
+                  </div>
+                )}
               </div>
-            </div>
-          </div>
-
-          {/* Recent 5 Drawn Numbers */}
-          <div className="lg:col-span-1">
-            <div className="text-white text-xs sm:text-sm font-bold mb-4 mt-2 sm:mt-3">Recent 5</div>
-            <div className="flex flex-wrap gap-1.5 mb-2 sm:mb-3">
-              {drawnNumbers.length > 0 ? (
-                [...drawnNumbers].slice(-5).reverse().map((drawn, idx) => {
-                  const colors: Record<string, string> = {
-                    'B': 'bg-pink-500',
-                    'I': 'bg-green-400',
-                    'N': 'bg-blue-500',
-                    'G': 'bg-orange-500',
-                    'O': 'bg-red-500',
-                  };
-                  
-                  return (
-                    <div
-                      key={`${drawn.letter}-${drawn.number}-${idx}`}
-                      className={`${colors[drawn.letter]} text-white font-bold text-sm sm:text-base px-2 sm:px-3 py-1 sm:py-1.5 rounded text-center border-2 border-white`}
-                    >
-                      {drawn.letter}-{drawn.number}
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="text-blue-200 text-xs sm:text-sm">No numbers drawn yet</div>
-              )}
             </div>
           </div>
         </div>
-
-        {/* Player's Bingo Card */}
-        {playerCardNumbers && (
-          <div className="mt-3 sm:mt-4 mb-4 sm:mb-3 flex justify-center">
-            <div className="bg-white rounded-lg p-1 border border-blue-300 inline-block">
-              <div className="grid grid-cols-5 gap-0.5">
-                {/* Header Row */}
-                {['B', 'I', 'N', 'G', 'O'].map((letter, idx) => {
-                  const colors = ['bg-pink-500', 'bg-green-400', 'bg-blue-500', 'bg-orange-500', 'bg-red-500'];
-                  return (
-                    <div
-                      key={letter}
-                      className={`${colors[idx]} text-white font-bold text-[8px] p-0.5 rounded text-center`}
-                    >
-                      {letter}
-                    </div>
-                  );
-                })}
-                
-                {/* Card Numbers */}
-                {playerCardNumbers.map((row: number[], rowIndex: number) =>
-                  row.map((number: number, colIndex: number) => {
-                    const letter = ['B', 'I', 'N', 'G', 'O'][colIndex];
-                    const isCenter = rowIndex === 2 && colIndex === 2 && number === 0;
-                    const key = `${letter}-${number}`;
-                    const isMarked = markedNumbers.has(key);
-                    const isDrawn = drawnNumbersSet.has(key);
-                    
-                    return (
-                      <button
-                        key={`${rowIndex}-${colIndex}`}
-                        onClick={() => !isCenter && isDrawn && handleMarkNumber(letter, number)}
-                        disabled={isCenter || !isDrawn}
-                        className={`w-8 h-8 sm:w-10 sm:h-10 rounded border flex items-center justify-center font-bold text-[8px] sm:text-[9px] transition-all ${
-                          isCenter
-                            ? 'bg-gray-800 text-white border-gray-700 cursor-default'
-                            : isMarked
-                            ? 'bg-gray-800 text-white border-gray-700'
-                            : 'bg-white text-gray-900 border-gray-300 cursor-default'
-                        }`}
-                      >
-                        {isCenter ? '#' : number}
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-              <div className="text-center mt-0.5 text-gray-700 font-bold text-[8px] sm:text-[9px]">
-                BOARD NUMBER {selectedCardId}
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Action Buttons */}
         <div className="mt-1 sm:mt-2 grid grid-cols-3 gap-1 sm:gap-2">
