@@ -28,6 +28,7 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
   const [claimingBingo, setClaimingBingo] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [winnerPopup, setWinnerPopup] = useState<{ show: boolean; message: string; prize?: number; winnerName?: string } | null>(null);
+  const [wsReconnectKey, setWsReconnectKey] = useState(0);
   
   const { currentGameId, selectedGameTypeString, selectedCardId, setCurrentView } = useGameStore();
   
@@ -36,7 +37,9 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
 
   // Connect to WebSocket for real-time updates
   // Use gameId (not gameType) for GamePlay page to get specific game updates
-  const socket = useGameWebSocket(null, currentGameId);
+  // Extract actual gameId (in case we need to force reconnect with key)
+  const actualGameId = currentGameId?.split('?')[0] || currentGameId;
+  const socket = useGameWebSocket(null, wsReconnectKey > 0 ? `${actualGameId}-reconnect-${wsReconnectKey}` : actualGameId);
 
   // Fetch initial game state
   useEffect(() => {
@@ -449,6 +452,41 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
     }
   };
 
+  // Handle refresh - fetch updated data and reconnect WebSocket if needed
+  const handleRefresh = async () => {
+    if (!currentGameId) return;
+
+    try {
+      // Fetch updated game state
+      const gameState = await getGameState(currentGameId);
+      setGame(gameState.game);
+      
+      // Update drawn numbers
+      if (gameState.drawnNumbers) {
+        setDrawnNumbers(gameState.drawnNumbers);
+        // Mark numbers on player's card that have been drawn
+        const drawn = new Set(
+          gameState.drawnNumbers.map(n => `${n.letter}-${n.number}`)
+        );
+        setMarkedNumbers(drawn);
+      }
+
+      // Check WebSocket connection and force reconnect if closed
+      if (!socket || socket.readyState === WebSocket.CLOSED || socket.readyState === WebSocket.CLOSING) {
+        console.log('🔄 WebSocket is closed, forcing reconnection...');
+        // Force reconnection by updating the reconnect key (this will trigger hook to recreate connection)
+        setWsReconnectKey(prev => prev + 1);
+      } else if (socket.readyState === WebSocket.OPEN) {
+        console.log('✅ WebSocket is already connected');
+      } else if (socket.readyState === WebSocket.CONNECTING) {
+        console.log('⏳ WebSocket is connecting...');
+      }
+    } catch (error) {
+      console.error('Error refreshing game data:', error);
+      alert('Failed to refresh game data. Please try again.');
+    }
+  };
+
   // Get current call (most recent drawn number)
   const currentCall = drawnNumbers.length > 0 ? drawnNumbers[drawnNumbers.length - 1] : null;
 
@@ -635,7 +673,7 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
                 {/* Player's Bingo Card - At the bottom of this column */}
                 {playerCardNumbers && (
                   <div className="mt-auto pt-4">
-                    <div className="bg-white rounded-lg p-1 border border-blue-300">
+                    <div className="bg-blue-700 rounded-lg p-1 border-2 border-blue-500">
                       <div className="grid grid-cols-5 gap-0.5">
                         {/* Header Row */}
                         {['B', 'I', 'N', 'G', 'O'].map((letter, idx) => {
@@ -664,12 +702,12 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
                                 key={`${rowIndex}-${colIndex}`}
                                 onClick={() => !isCenter && isDrawn && handleMarkNumber(letter, number)}
                                 disabled={isCenter || !isDrawn}
-                                className={`w-7 h-7 sm:w-9 sm:h-9 rounded border-2 flex items-center justify-center font-bold text-[8px] sm:text-[9px] transition-all ${
+                                className={`w-7 h-7 sm:w-9 sm:h-9 rounded border-2 flex items-center justify-center font-black text-[9px] sm:text-[10px] transition-all ${
                                   isCenter
                                     ? 'bg-gray-900 text-white border-gray-800 cursor-default shadow-inner'
                                     : isMarked
                                     ? 'bg-gray-900 text-white border-gray-800 shadow-inner'
-                                    : 'bg-white text-black border-gray-400 cursor-default shadow-sm'
+                                    : 'bg-blue-800 text-white border-blue-500 cursor-default shadow-sm'
                                 }`}
                               >
                                 {isCenter ? '#' : number}
@@ -678,7 +716,7 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
                           })
                         )}
                       </div>
-                      <div className="text-center mt-0.5 text-gray-900 font-bold text-[7px] sm:text-[8px]">
+                      <div className="text-center mt-0.5 text-white font-black text-[7px] sm:text-[8px]">
                         BOARD NUMBER {selectedCardId}
                       </div>
                     </div>
@@ -708,7 +746,7 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
           </button>
           
           <button
-            onClick={() => window.location.reload()}
+            onClick={handleRefresh}
             className="bg-yellow-400 hover:bg-yellow-500 text-white font-bold text-xs sm:text-sm py-1.5 sm:py-2 rounded-lg transition-all"
           >
             Refresh

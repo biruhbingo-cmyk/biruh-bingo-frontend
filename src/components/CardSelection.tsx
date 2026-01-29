@@ -500,15 +500,15 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
         {/* Selected Card Preview */}
         {selectedCardData && (
           <div className="flex flex-col items-center mb-3">
-            <div className="bg-white rounded-lg p-1 sm:p-1.5 w-full max-w-[calc((min(90vw,500px))/2-0.5*0.25rem)] sm:max-w-[calc((min(90vw,500px))/2-0.5*0.375rem)] shadow-lg border-2 border-blue-300">
+            <div className="bg-blue-700 rounded-lg p-1 sm:p-1.5 w-full max-w-[calc((min(90vw,500px))/2-0.5*0.25rem)] sm:max-w-[calc((min(90vw,500px))/2-0.5*0.375rem)] shadow-lg border-2 border-blue-500">
               {/* Header Row - B I N G O */}
               <div className="grid grid-cols-5 gap-1 sm:gap-1.5 mb-1 sm:mb-1.5">
                 {(['B', 'I', 'N', 'G', 'O'] as const).map((letter, idx) => {
-                  const colors = ['bg-pink-500', 'bg-green-500', 'bg-blue-600', 'bg-orange-500', 'bg-red-500'];
+                  const colors = ['bg-pink-500', 'bg-green-400', 'bg-blue-500', 'bg-orange-500', 'bg-red-500'];
                   return (
                     <div
                       key={letter}
-                      className={`aspect-square text-center font-bold text-xs sm:text-sm flex items-center justify-center ${colors[idx]} text-white rounded-lg shadow`}
+                      className={`aspect-square text-center font-bold text-xs sm:text-sm flex items-center justify-center ${colors[idx]} text-white rounded-lg shadow-sm`}
                     >
                       {letter}
                     </div>
@@ -526,10 +526,10 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
                     return (
                       <div
                         key={`${rowIndex}-${colIndex}`}
-                        className={`aspect-square rounded-lg border-2 flex items-center justify-center font-bold text-xs sm:text-sm ${
+                        className={`aspect-square rounded-lg border-2 flex items-center justify-center font-black text-xs sm:text-sm ${
                           isCenter && number === 0
-                            ? 'bg-gray-800 text-white border-gray-700'
-                            : 'bg-white text-gray-900 border-gray-300'
+                            ? 'bg-gray-900 text-white border-gray-800 shadow-inner'
+                            : 'bg-blue-800 text-white border-blue-500 shadow-sm'
                         }`}
                       >
                         {displayValue}

@@ -39,7 +39,9 @@ export function useGameWebSocket(
           wsUrl = `${baseUrl}/api/v1/ws/game?type=${gameType}`;
         } else if (gameId) {
           // Connect by game ID
-          wsUrl = `${baseUrl}/api/v1/ws/game/${gameId}`;
+          // Extract actual gameId (remove any reconnect suffix if present)
+          const actualGameId = gameId.split('-reconnect-')[0];
+          wsUrl = `${baseUrl}/api/v1/ws/game/${actualGameId}`;
         } else {
           console.error('Invalid gameType or gameId provided');
           return;
