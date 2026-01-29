@@ -615,14 +615,33 @@ export default function GameSelection({ user, wallet }: GameSelectionProps) {
                   setTimeout(() => {
                     const newWs = createOrReconnectWebSocket(gameType, true);
                     if (newWs) {
-                      // Reattach the message handler
-                      const handler = handlersRef.current.get(gameType);
-                      if (handler) {
-                        // Remove old handler if it exists
-                        newWs.removeEventListener('message', handler);
-                        // Add handler to new connection
-                        newWs.addEventListener('message', handler);
+                      // Get or create the message handler
+                      let handler = handlersRef.current.get(gameType);
+                      if (!handler) {
+                        // Create new handler if it doesn't exist
+                        handler = (event: MessageEvent) => {
+                          handleMessage(gameType, event);
+                        };
+                        handlersRef.current.set(gameType, handler);
+                      }
+                      
+                      // Attach handler based on WebSocket state
+                      const attachHandler = () => {
+                        // Remove any existing handler first
+                        newWs.removeEventListener('message', handler!);
+                        // Add the handler
+                        newWs.addEventListener('message', handler!);
                         console.log(`📌 [${processingId}] Re-attached handler to reconnected WebSocket for ${gameType}`);
+                      };
+                      
+                      if (newWs.readyState === WebSocket.OPEN) {
+                        attachHandler();
+                      } else if (newWs.readyState === WebSocket.CONNECTING) {
+                        newWs.addEventListener('open', () => {
+                          attachHandler();
+                        }, { once: true });
+                      } else {
+                        attachHandler();
                       }
                     }
                   }, 500); // Small delay to ensure backend has created the new game
@@ -670,8 +689,10 @@ export default function GameSelection({ user, wallet }: GameSelectionProps) {
     };
 
     // Create or reuse WebSocket connections
+    // Force reconnect to ensure fresh subscriptions when component mounts/remounts
     gameTypes.forEach((gameType) => {
-      const ws = createOrReconnectWebSocket(gameType);
+      // Force reconnect to ensure we're subscribed to the current game's channel
+      const ws = createOrReconnectWebSocket(gameType, true);
       if (!ws) return;
 
       // Add message handler for this component instance
@@ -686,12 +707,28 @@ export default function GameSelection({ user, wallet }: GameSelectionProps) {
         handleMessage(gameType, event);
       };
       
-      // Attach handler - works for both OPEN and CONNECTING states
-      ws.addEventListener('message', messageHandler);
+      // Attach handler based on WebSocket state
+      const attachHandler = () => {
+        // Remove any existing handler first
+        ws.removeEventListener('message', messageHandler);
+        // Add the handler
+        ws.addEventListener('message', messageHandler);
+        handlersRef.current.set(gameType, messageHandler);
+        console.log(`📌 Attached handler for ${gameType}, readyState: ${ws.readyState === WebSocket.OPEN ? 'OPEN' : ws.readyState === WebSocket.CONNECTING ? 'CONNECTING' : 'CLOSED'}`);
+      };
       
-      // Store handler reference for cleanup
-      handlersRef.current.set(gameType, messageHandler);
-      console.log(`📌 Attached handler for ${gameType}, readyState: ${ws.readyState === WebSocket.OPEN ? 'OPEN' : ws.readyState === WebSocket.CONNECTING ? 'CONNECTING' : 'CLOSED'}`);
+      if (ws.readyState === WebSocket.OPEN) {
+        // Already open, attach immediately
+        attachHandler();
+      } else if (ws.readyState === WebSocket.CONNECTING) {
+        // Wait for connection to open, then attach handler
+        ws.addEventListener('open', () => {
+          attachHandler();
+        }, { once: true });
+      } else {
+        // If closed, attach anyway (will work when it opens)
+        attachHandler();
+      }
       
       // Log connection state
       console.log(`🔌 WebSocket for ${gameType} readyState:`, ws.readyState === WebSocket.OPEN ? 'OPEN' : ws.readyState === WebSocket.CONNECTING ? 'CONNECTING' : 'CLOSED');

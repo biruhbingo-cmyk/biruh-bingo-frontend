@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { API_URL, getGameState, calculatePotentialWin, type User, type Wallet, type Game } from '@/lib/api';
+import { API_URL, getGameState, getGames, calculatePotentialWin, type User, type Wallet, type Game } from '@/lib/api';
 import { useGameStore } from '@/store/gameStore';
 import { useGameWebSocket, type WebSocketMessage } from '@/hooks/useSocket';
 import axios from 'axios';
@@ -28,8 +28,12 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
   const [joining, setJoining] = useState(false);
   const [game, setGame] = useState<Game | null>(null);
   const [takenCards, setTakenCards] = useState<Set<number>>(new Set());
+  // Track processed NEW_GAME_AVAILABLE events to prevent duplicates
+  const processedGamesRef = useRef<Set<string>>(new Set());
+  // Track games currently being fetched to prevent concurrent fetches
+  const fetchingGamesRef = useRef<Set<string>>(new Set());
   
-  const { setCurrentView, setSelectedCardId: setStoreCardId, currentGameId, selectedGameType, selectedGameTypeString } = useGameStore();
+  const { setCurrentView, setSelectedCardId: setStoreCardId, currentGameId, selectedGameType, selectedGameTypeString, setCurrentGameId } = useGameStore();
 
   // Connect to WebSocket for real-time updates (by game type - recommended)
   const socket = useGameWebSocket(selectedGameTypeString, currentGameId);
@@ -74,13 +78,38 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
             break;
 
           case 'GAME_STATUS':
+            // Check if this is a FINISHED/CANCELLED status message
+            if (message.data.status === 'FINISHED' || message.data.status === 'CANCELLED') {
+              if (currentGameId) {
+                console.log(`🔄 Game status FINISHED/CANCELLED for gameId=${currentGameId}`);
+                // Clear the game - wait for NEW_GAME_AVAILABLE
+                setGame(null);
+                // Clean up processed games ref
+                processedGamesRef.current.delete(currentGameId);
+                // Clear currentGameId so we can set it to the new game
+                setCurrentGameId(null);
+              }
+              break;
+            }
+            
+            // Regular GAME_STATUS with state update
             if (message.data.state) {
-              setGame((prev) => prev ? { 
-                ...prev, 
-                state: message.data.state,
-                player_count: message.data.player_count ?? prev.player_count,
-                prize_pool: message.data.prize_pool ?? prev.prize_pool
-              } : null);
+              // If state is FINISHED or CANCELLED, clear the game
+              if (message.data.state === 'FINISHED' || message.data.state === 'CANCELLED') {
+                if (currentGameId) {
+                  console.log(`🔄 Game state FINISHED/CANCELLED for gameId=${currentGameId}`);
+                  setGame(null);
+                  processedGamesRef.current.delete(currentGameId);
+                  setCurrentGameId(null);
+                }
+              } else {
+                setGame((prev) => prev ? { 
+                  ...prev, 
+                  state: message.data.state,
+                  player_count: message.data.player_count ?? prev.player_count,
+                  prize_pool: message.data.prize_pool ?? prev.prize_pool
+                } : null);
+              }
             }
             break;
 
@@ -132,13 +161,37 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
                 prize_pool: message.data.prize_pool ?? prev.prize_pool,
               };
             });
-            // Remove card from taken cards if card_id is provided
-            if (message.data.card_id !== undefined) {
-              setTakenCards((prev) => {
-                const newSet = new Set(prev);
-                newSet.delete(message.data.card_id);
-                return newSet;
-              });
+            
+            // Refresh taken cards from server to ensure accuracy
+            // This ensures the leaving player's card is removed unless another player has it
+            if (currentGameId) {
+              getGameState(currentGameId)
+                .then((gameState) => {
+                  if (gameState.takenCards && Array.isArray(gameState.takenCards)) {
+                    setTakenCards(new Set(gameState.takenCards));
+                    console.log('🔄 Refreshed taken cards after player left:', gameState.takenCards);
+                  }
+                })
+                .catch((err) => {
+                  console.error('Error refreshing taken cards after player left:', err);
+                  // Fallback: Remove card from taken cards if card_id is provided
+                  if (message.data.card_id !== undefined) {
+                    setTakenCards((prev) => {
+                      const newSet = new Set(prev);
+                      newSet.delete(message.data.card_id);
+                      return newSet;
+                    });
+                  }
+                });
+            } else {
+              // Fallback: Remove card from taken cards if card_id is provided and no gameId
+              if (message.data.card_id !== undefined) {
+                setTakenCards((prev) => {
+                  const newSet = new Set(prev);
+                  newSet.delete(message.data.card_id);
+                  return newSet;
+                });
+              }
             }
             break;
 
@@ -155,7 +208,18 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
             break;
 
           case 'NUMBER_DRAWN':
-            // Number drawn - for game play screen
+            // Number drawn - update game state to DRAWING if it's still WAITING or COUNTDOWN
+            setGame((prev) => {
+              if (!prev) return null;
+              
+              // If game is in COUNTDOWN or WAITING state, transition to DRAWING
+              if (prev.state === 'COUNTDOWN' || prev.state === 'WAITING') {
+                console.log(`🔄 Updating state from ${prev.state} to DRAWING (number drawn)`);
+                return { ...prev, state: 'DRAWING' };
+              }
+              
+              return prev;
+            });
             break;
 
           case 'PLAYER_ELIMINATED':
@@ -166,8 +230,129 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
             break;
 
           case 'WINNER':
-            // Game finished - update game state
-            setGame((prev) => prev ? { ...prev, state: 'FINISHED' } : null);
+            // Game finished - clear the game and wait for NEW_GAME_AVAILABLE
+            if (currentGameId) {
+              console.log(`🏆 Winner announced for gameId=${currentGameId}`);
+              setGame(null);
+              processedGamesRef.current.delete(currentGameId);
+              setCurrentGameId(null);
+            }
+            break;
+
+          case 'NEW_GAME_AVAILABLE':
+            // New game is available - fetch and update currentGameId
+            const processingId = `${selectedGameTypeString}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            console.log(`🎮 [${processingId}] New game available for ${selectedGameTypeString}:`, message.data);
+            if (message.data.gameId && message.data.gameType === selectedGameTypeString) {
+              const gameId = message.data.gameId;
+              
+              // Check if we've already processed this game ID to prevent duplicates
+              if (processedGamesRef.current.has(gameId)) {
+                console.log(`⚠️ [${processingId}] Game ${gameId} already processed for ${selectedGameTypeString}, skipping duplicate`);
+                return;
+              }
+              
+              // Check if we're already fetching this game
+              if (fetchingGamesRef.current.has(gameId)) {
+                console.log(`⚠️ [${processingId}] Game ${gameId} already being fetched for ${selectedGameTypeString}, skipping duplicate fetch`);
+                return;
+              }
+              
+              // Mark as fetching to prevent concurrent fetches
+              fetchingGamesRef.current.add(gameId);
+              
+              // Mark as processing to prevent duplicate processing BEFORE async call
+              processedGamesRef.current.add(gameId);
+              
+              console.log(`📥 [${processingId}] Fetching game state for ${gameId} (${selectedGameTypeString})...`);
+              
+              // Helper function to fetch game with retry logic
+              const fetchGameWithRetry = async (retryCount: number = 0, maxRetries: number = 3): Promise<Game | null> => {
+                const delay = Math.min(1000 * Math.pow(2, retryCount), 3000); // Exponential backoff: 1s, 2s, 3s
+                
+                if (retryCount > 0) {
+                  console.log(`⏳ [${processingId}] Retrying fetch (attempt ${retryCount + 1}/${maxRetries + 1}) after ${delay}ms delay...`);
+                  await new Promise(resolve => setTimeout(resolve, delay));
+                }
+                
+                try {
+                  // Try getGameState first
+                  const gameState = await getGameState(gameId);
+                  if (gameState?.game) {
+                    return gameState.game;
+                  }
+                } catch (error: any) {
+                  // If getGameState fails, try getGames as fallback
+                  if (retryCount < maxRetries) {
+                    console.warn(`⚠️ [${processingId}] getGameState failed (attempt ${retryCount + 1}), will retry:`, error.message);
+                    return fetchGameWithRetry(retryCount + 1, maxRetries);
+                  }
+                  
+                  // Last attempt: try getGames fallback
+                  console.warn(`⚠️ [${processingId}] getGameState failed, trying getGames fallback...`);
+                  try {
+                    const games = await getGames(selectedGameTypeString || undefined);
+                    const newGame = games.find((g) => g.id === gameId);
+                    if (newGame) {
+                      console.log(`✅ [${processingId}] Found new game via getGames fallback`);
+                      return newGame;
+                    }
+                  } catch (fallbackError) {
+                    console.error(`❌ [${processingId}] getGames fallback also failed:`, fallbackError);
+                  }
+                  
+                  // If still failing and we have retries left, retry
+                  if (retryCount < maxRetries) {
+                    return fetchGameWithRetry(retryCount + 1, maxRetries);
+                  }
+                  
+                  throw error;
+                }
+                
+                return null;
+              };
+              
+              // Fetch with retry logic (handles timing issue where game might not be in DB yet)
+              setTimeout(() => {
+                fetchGameWithRetry()
+                  .then((newGame) => {
+                    if (newGame) {
+                      console.log(`✅ [${processingId}] Successfully fetched new game ${newGame.id} for ${selectedGameTypeString}`);
+                      // Update currentGameId to the new game
+                      setCurrentGameId(newGame.id);
+                      // Update game state
+                      setGame(newGame);
+                      // Set initial taken cards if available
+                      if (newGame.id) {
+                        getGameState(newGame.id)
+                          .then((gameState) => {
+                            if (gameState.takenCards && Array.isArray(gameState.takenCards)) {
+                              setTakenCards(new Set(gameState.takenCards));
+                            }
+                          })
+                          .catch((err) => {
+                            console.error('Error fetching taken cards for new game:', err);
+                          });
+                      }
+                    } else {
+                      console.error(`❌ [${processingId}] Could not fetch new game ${gameId} after all retries`);
+                      // Remove from processed set so we can retry later
+                      processedGamesRef.current.delete(gameId);
+                      fetchingGamesRef.current.delete(gameId);
+                    }
+                  })
+                  .catch((error) => {
+                    console.error(`❌ [${processingId}] Failed to fetch new game ${gameId} after all retries:`, error);
+                    // Remove from processed set on error, so we can retry
+                    processedGamesRef.current.delete(gameId);
+                    fetchingGamesRef.current.delete(gameId);
+                  })
+                  .finally(() => {
+                    // Always remove from fetching set when done
+                    fetchingGamesRef.current.delete(gameId);
+                  });
+              }, 1500); // Initial 1.5s delay to ensure backend has committed the game to DB
+            }
             break;
 
           default:
@@ -183,7 +368,7 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
     return () => {
       socket.removeEventListener('message', handleMessage);
     };
-  }, [socket]);
+  }, [socket, currentGameId, selectedGameTypeString, setCurrentGameId]);
 
   const handleCardClick = (cardId: number) => {
     setSelectedCardId(cardId);
@@ -362,9 +547,9 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
       <footer className="p-4 bg-blue-600 border-t border-blue-500/50 flex-shrink-0">
         <button
           onClick={handleJoinGame}
-          disabled={!selectedCardId || joining}
+          disabled={!selectedCardId || joining || game?.state === 'DRAWING'}
           className={`w-full py-2.5 sm:py-3 rounded-lg font-bold text-base sm:text-lg flex items-center justify-center gap-2 transition-all shadow-lg ${
-            selectedCardId && !joining
+            selectedCardId && !joining && game?.state !== 'DRAWING'
               ? 'bg-gradient-to-r from-blue-400 via-blue-500 to-yellow-400 text-white hover:from-blue-500 hover:via-blue-600 hover:to-yellow-500'
               : 'bg-gray-500 text-gray-300 cursor-not-allowed'
           }`}
@@ -376,6 +561,13 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
               <span>Joining...</span>
+            </>
+          ) : game?.state === 'DRAWING' ? (
+            <>
+              <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+              </svg>
+              <span>እባክዎ ይጠብቁ</span>
             </>
           ) : (
             <>
