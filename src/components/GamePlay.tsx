@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { API_URL, getGameState, calculatePotentialWin, type Game, type User, type Wallet } from '@/lib/api';
+import { API_URL, getGameState, calculatePotentialWin, getWalletByTelegramId, type Game, type User, type Wallet } from '@/lib/api';
 import { useGameStore } from '@/store/gameStore';
 import { useGameWebSocket, type WebSocketMessage } from '@/hooks/useSocket';
 import { getCardData } from '@/lib/cardData';
@@ -11,6 +11,7 @@ import axios from 'axios';
 interface GamePlayProps {
   user: User;
   wallet: Wallet;
+  onWalletUpdate?: (wallet: Wallet) => void;
 }
 
 interface DrawnNumber {
@@ -19,7 +20,7 @@ interface DrawnNumber {
   drawn_at: string;
 }
 
-export default function GamePlay({ user, wallet }: GamePlayProps) {
+export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps) {
   const searchParams = useSearchParams();
   const [game, setGame] = useState<Game | null>(null);
   const [drawnNumbers, setDrawnNumbers] = useState<DrawnNumber[]>([]);
@@ -29,8 +30,14 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
   const [leaving, setLeaving] = useState(false);
   const [winnerPopup, setWinnerPopup] = useState<{ show: boolean; message: string; prize?: number; winnerName?: string } | null>(null);
   const [wsReconnectKey, setWsReconnectKey] = useState(0);
+  const [currentWallet, setCurrentWallet] = useState<Wallet>(wallet);
   
   const { currentGameId, selectedGameTypeString, selectedCardId, setCurrentView } = useGameStore();
+  
+  // Sync wallet when prop changes
+  useEffect(() => {
+    setCurrentWallet(wallet);
+  }, [wallet]);
   
   // Get player's card data
   const playerCardNumbers = selectedCardId ? getCardData(selectedCardId) : null;
@@ -251,6 +258,20 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
                 prize: message.data.prize,
                 winnerName: `${user.first_name} ${user.last_name || ''}`.trim(),
               });
+              
+              // Refresh wallet balance when user wins
+              getWalletByTelegramId(user.telegram_id.toString())
+                .then((updatedWallet) => {
+                  setCurrentWallet(updatedWallet);
+                  // Update parent component's wallet state
+                  if (onWalletUpdate) {
+                    onWalletUpdate(updatedWallet);
+                  }
+                  console.log('💰 Updated wallet balance after win:', updatedWallet.balance);
+                })
+                .catch((err) => {
+                  console.error('Error refreshing wallet after win:', err);
+                });
             } else {
               // Show winner's name if available, otherwise show generic message
               const winnerName = message.data.winner_name || message.data.user_name || 'Another player';
@@ -403,6 +424,21 @@ export default function GamePlay({ user, wallet }: GamePlayProps) {
           message: response.data.message || 'Congratulations! You won!',
           prize: response.data.prize,
         });
+        
+        // Refresh wallet balance when user wins
+        getWalletByTelegramId(user.telegram_id.toString())
+          .then((updatedWallet) => {
+            setCurrentWallet(updatedWallet);
+            // Update parent component's wallet state
+            if (onWalletUpdate) {
+              onWalletUpdate(updatedWallet);
+            }
+            console.log('💰 Updated wallet balance after bingo win:', updatedWallet.balance);
+          })
+          .catch((err) => {
+            console.error('Error refreshing wallet after bingo win:', err);
+          });
+        
         // Redirect after 2 seconds
         setTimeout(() => {
           setCurrentView('selection');

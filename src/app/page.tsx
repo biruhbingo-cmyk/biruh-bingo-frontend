@@ -78,7 +78,7 @@ function HomeContent() {
   }
 
   if (currentView === 'play') {
-    return <GamePlay user={user} wallet={wallet} />;
+    return <GamePlay user={user} wallet={wallet} onWalletUpdate={setWallet} />;
   }
 
   // Default to game selection
