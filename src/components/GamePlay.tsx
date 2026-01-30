@@ -379,8 +379,8 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
 
     // Verify pattern (simple check - can be enhanced)
     const markedCount = markedNumbers.size;
-    if (markedCount < 5) {
-      alert('You need to mark at least 5 numbers to claim bingo!');
+    if (markedCount < 4) {
+      alert('You need to mark at least 4 numbers to claim bingo!');
       return;
     }
 
