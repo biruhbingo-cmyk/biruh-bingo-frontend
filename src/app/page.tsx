@@ -50,6 +50,23 @@ function HomeContent() {
     fetchUserData();
   }, [searchParams]);
 
+  // Refetch wallet when returning to selection view (e.g., after a game finishes)
+  useEffect(() => {
+    const refetchWallet = async () => {
+      if (currentView === 'selection' && user) {
+        try {
+          const updatedWallet = await getWalletByTelegramId(user.telegram_id.toString());
+          setWallet(updatedWallet);
+          console.log('💰 Wallet balance refreshed:', updatedWallet.balance);
+        } catch (err: any) {
+          console.error('Error refetching wallet:', err);
+        }
+      }
+    };
+
+    refetchWallet();
+  }, [currentView, user]);
+
   if (loading) {
     return (
       <main className="min-h-screen bg-blue-600 text-white flex items-center justify-center">
