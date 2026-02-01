@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { API_URL, getGameState, getGames, calculatePotentialWin, type User, type Wallet, type Game } from '@/lib/api';
+import { API_URL, getGameState, getGames, calculatePotentialWin, checkUserInGame, getPlayerCardId, type User, type Wallet, type Game } from '@/lib/api';
 import { useGameStore } from '@/store/gameStore';
 import { useGameWebSocket, type WebSocketMessage } from '@/hooks/useSocket';
 import axios from 'axios';
@@ -28,20 +28,21 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
   const [joining, setJoining] = useState(false);
   const [game, setGame] = useState<Game | null>(null);
   const [takenCards, setTakenCards] = useState<Set<number>>(new Set());
+  const [isUserInGame, setIsUserInGame] = useState<boolean>(false);
   // Track processed NEW_GAME_AVAILABLE events to prevent duplicates
   const processedGamesRef = useRef<Set<string>>(new Set());
   // Track games currently being fetched to prevent concurrent fetches
   const fetchingGamesRef = useRef<Set<string>>(new Set());
   
-  const { setCurrentView, setSelectedCardId: setStoreCardId, currentGameId, selectedGameType, selectedGameTypeString, setCurrentGameId } = useGameStore();
+  const { setCurrentView, setSelectedCardId: setStoreCardId, currentGameId, selectedGameType, selectedGameTypeString, setCurrentGameId, selectedCardId: storeCardId } = useGameStore();
 
   // Connect to WebSocket for real-time updates (by game type - recommended)
   const socket = useGameWebSocket(selectedGameTypeString, currentGameId);
 
-  // Fetch initial game state
+  // Fetch initial game state and check if user is already in game
   useEffect(() => {
     const fetchGameData = async () => {
-      if (currentGameId) {
+      if (currentGameId && user?.id) {
         try {
           const gameState = await getGameState(currentGameId);
           setGame(gameState.game);
@@ -49,14 +50,29 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
           if (gameState.takenCards && Array.isArray(gameState.takenCards)) {
             setTakenCards(new Set(gameState.takenCards));
           }
+          
+          // Check if user is already in the game
+          const userInGame = await checkUserInGame(currentGameId, user.id);
+          setIsUserInGame(userInGame);
+          
+          // Also check if user's card from store is in taken cards (fallback check)
+          if (!userInGame && storeCardId && gameState.takenCards) {
+            const cardInTaken = gameState.takenCards.includes(storeCardId);
+            if (cardInTaken) {
+              setIsUserInGame(true);
+            }
+          }
         } catch (error) {
           console.error('Error fetching game data:', error);
+          setIsUserInGame(false);
         }
+      } else {
+        setIsUserInGame(false);
       }
     };
 
     fetchGameData();
-  }, [currentGameId]);
+  }, [currentGameId, user?.id, storeCardId]);
 
   // Listen to WebSocket messages for real-time updates
   useEffect(() => {
@@ -140,6 +156,15 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
             // Add card to taken cards if card_id is provided
             if (message.data.card_id !== undefined) {
               setTakenCards((prev) => new Set([...prev, message.data.card_id]));
+              // If this is the current user's card, update isUserInGame
+              if (message.data.card_id === storeCardId && user?.id && currentGameId) {
+                checkUserInGame(currentGameId, user.id)
+                  .then((inGame) => setIsUserInGame(inGame))
+                  .catch(() => {
+                    // Fallback: if user's card is in taken cards, assume they're in game
+                    setIsUserInGame(true);
+                  });
+              }
             }
             break;
 
@@ -170,6 +195,26 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
                   if (gameState.takenCards && Array.isArray(gameState.takenCards)) {
                     setTakenCards(new Set(gameState.takenCards));
                     console.log('🔄 Refreshed taken cards after player left:', gameState.takenCards);
+                    
+                    // Re-check if user is still in game
+                    if (user?.id) {
+                      checkUserInGame(currentGameId, user.id)
+                        .then((inGame) => {
+                          setIsUserInGame(inGame);
+                          // Fallback: check if user's card is in taken cards
+                          if (!inGame && storeCardId && gameState.takenCards.includes(storeCardId)) {
+                            setIsUserInGame(true);
+                          }
+                        })
+                        .catch(() => {
+                          // Fallback: check if user's card is in taken cards
+                          if (storeCardId && gameState.takenCards.includes(storeCardId)) {
+                            setIsUserInGame(true);
+                          } else {
+                            setIsUserInGame(false);
+                          }
+                        });
+                    }
                   }
                 })
                 .catch((err) => {
@@ -181,6 +226,10 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
                       newSet.delete(message.data.card_id);
                       return newSet;
                     });
+                    // If user's card was removed, update isUserInGame
+                    if (message.data.card_id === storeCardId && user?.id) {
+                      setIsUserInGame(false);
+                    }
                   }
                 });
             } else {
@@ -191,6 +240,10 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
                   newSet.delete(message.data.card_id);
                   return newSet;
                 });
+                // If user's card was removed, update isUserInGame
+                if (message.data.card_id === storeCardId) {
+                  setIsUserInGame(false);
+                }
               }
             }
             break;
@@ -368,7 +421,7 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
     return () => {
       socket.removeEventListener('message', handleMessage);
     };
-  }, [socket, currentGameId, selectedGameTypeString, setCurrentGameId]);
+  }, [socket, currentGameId, selectedGameTypeString, setCurrentGameId, user, storeCardId]);
 
   const handleCardClick = (cardId: number) => {
     setSelectedCardId(cardId);
@@ -445,6 +498,34 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
           </span>
         </div>
       </div>
+
+      {/* Continue as Before Button - Only show if user is already in game */}
+      {isUserInGame && (
+        <div className="px-2 sm:px-4 py-2 sm:py-3 bg-green-600 border-b-2 border-green-500 flex-shrink-0">
+          <button
+            onClick={async () => {
+              // Fetch and set card ID if not already set
+              if (!storeCardId && currentGameId && user?.id) {
+                try {
+                  const cardId = await getPlayerCardId(currentGameId, user.id);
+                  if (cardId) {
+                    setStoreCardId(cardId);
+                  }
+                } catch (error) {
+                  console.error('Error fetching player card ID:', error);
+                }
+              }
+              setCurrentView('play');
+            }}
+            className="w-full py-2.5 sm:py-3 rounded-lg font-bold text-base sm:text-lg flex items-center justify-center gap-2 transition-all shadow-lg bg-gradient-to-r from-green-500 via-green-600 to-green-700 text-white hover:from-green-600 hover:via-green-700 hover:to-green-800"
+          >
+            <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L9 9.414V13a1 1 0 102 0V9.414l1.293 1.293a1 1 0 001.414-1.414z" clipRule="evenodd" />
+            </svg>
+            <span>ጨዋታውን ቀጥል</span>
+          </button>
+        </div>
+      )}
 
       {/* Main Content - Scrollable */}
       <div className="flex-1 overflow-y-auto px-2 sm:px-4 py-2 bg-blue-600 min-h-0">

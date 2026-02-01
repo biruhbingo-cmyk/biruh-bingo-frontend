@@ -103,6 +103,35 @@ export const getGameState = async (gameId: string): Promise<GameStateResponse> =
   return response.data;
 };
 
+// Check if user is already a player in a game
+export const checkUserInGame = async (gameId: string, userId: string): Promise<boolean> => {
+  try {
+    const response = await axios.get(`${API_URL}/api/v1/games/${gameId}/players/${userId}`);
+    return response.data.player !== null && response.data.player !== undefined;
+  } catch (error: any) {
+    // If endpoint doesn't exist or user is not in game, return false
+    if (error.response?.status === 404) {
+      return false;
+    }
+    console.error('Error checking if user is in game:', error);
+    return false;
+  }
+};
+
+// Get player's card ID from a game
+export const getPlayerCardId = async (gameId: string, userId: string): Promise<number | null> => {
+  try {
+    const response = await axios.get(`${API_URL}/api/v1/games/${gameId}/players/${userId}`);
+    if (response.data.player && response.data.player.card_id) {
+      return response.data.player.card_id;
+    }
+    return null;
+  } catch (error: any) {
+    console.error('Error getting player card ID:', error);
+    return null;
+  }
+};
+
 // Calculate potential win based on game state
 export const calculatePotentialWin = (game: Game): number => {
   if (game.player_count === 0) return 0;

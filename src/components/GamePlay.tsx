@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { API_URL, getGameState, calculatePotentialWin, getWalletByTelegramId, type Game, type User, type Wallet } from '@/lib/api';
+import { API_URL, getGameState, calculatePotentialWin, getWalletByTelegramId, getPlayerCardId, type Game, type User, type Wallet } from '@/lib/api';
 import { useGameStore } from '@/store/gameStore';
 import { useGameWebSocket, type WebSocketMessage } from '@/hooks/useSocket';
 import { getCardData } from '@/lib/cardData';
@@ -32,7 +32,7 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
   const [wsReconnectKey, setWsReconnectKey] = useState(0);
   const [currentWallet, setCurrentWallet] = useState<Wallet>(wallet);
   
-  const { currentGameId, selectedGameTypeString, selectedCardId, setCurrentView } = useGameStore();
+  const { currentGameId, selectedGameTypeString, selectedCardId, setCurrentView, setSelectedCardId } = useGameStore();
   
   // Sync wallet when prop changes
   useEffect(() => {
@@ -48,10 +48,10 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
   const actualGameId = currentGameId?.split('?')[0] || currentGameId;
   const socket = useGameWebSocket(null, wsReconnectKey > 0 ? `${actualGameId}-reconnect-${wsReconnectKey}` : actualGameId);
 
-  // Fetch initial game state
+  // Fetch initial game state and player card ID if missing
   useEffect(() => {
     const fetchGameData = async () => {
-      if (currentGameId) {
+      if (currentGameId && user?.id) {
         try {
           const gameState = await getGameState(currentGameId);
           setGame(gameState.game);
@@ -63,6 +63,17 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
             );
             setMarkedNumbers(drawn);
           }
+          
+          // If selectedCardId is missing, fetch it from the backend
+          if (!selectedCardId) {
+            const cardId = await getPlayerCardId(currentGameId, user.id);
+            if (cardId) {
+              setSelectedCardId(cardId);
+              console.log('✅ Fetched player card ID:', cardId);
+            } else {
+              console.warn('⚠️ Could not fetch player card ID');
+            }
+          }
         } catch (error) {
           console.error('Error fetching game data:', error);
         }
@@ -70,7 +81,7 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
     };
 
     fetchGameData();
-  }, [currentGameId]);
+  }, [currentGameId, user?.id, selectedCardId, setSelectedCardId]);
 
   // Listen to WebSocket messages
   useEffect(() => {
