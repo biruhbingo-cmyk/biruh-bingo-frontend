@@ -28,6 +28,7 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
   const [countdown, setCountdown] = useState<number | null>(null);
   const [claimingBingo, setClaimingBingo] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [winnerPopup, setWinnerPopup] = useState<{ show: boolean; message: string; prize?: number; winnerName?: string } | null>(null);
   const [wsReconnectKey, setWsReconnectKey] = useState(0);
   const [currentWallet, setCurrentWallet] = useState<Wallet>(wallet);
@@ -472,14 +473,17 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
     }
   };
 
-  // Handle leave game
-  const handleLeaveGame = async () => {
+  // Handle leave game - show confirmation modal
+  const handleLeaveGame = () => {
+    if (!currentGameId) return;
+    setShowLeaveConfirm(true);
+  };
+
+  // Confirm and execute leave game
+  const confirmLeaveGame = async () => {
     if (!currentGameId) return;
 
-    if (!confirm('Are you sure you want to leave the game?')) {
-      return;
-    }
-
+    setShowLeaveConfirm(false);
     setLeaving(true);
 
     try {
@@ -576,6 +580,36 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
 
   return (
     <main className="min-h-screen bg-blue-600 text-white flex flex-col relative">
+      {/* Leave Confirmation Modal */}
+      {showLeaveConfirm && (
+        <div className="fixed inset-0 bg-blue-600 bg-opacity-95 flex items-center justify-center z-50">
+          <div className="bg-blue-700 border-2 border-blue-400 rounded-lg p-6 sm:p-8 max-w-md mx-4 text-center shadow-xl">
+            <div className="text-4xl sm:text-5xl mb-4">⚠️</div>
+            <h2 className="text-xl sm:text-2xl font-bold text-white mb-4">
+              Are you sure you want to leave the game?
+            </h2>
+            <p className="text-blue-200 text-sm sm:text-base mb-6">
+              Your bet will not be refunded if you leave now.
+            </p>
+            <div className="flex gap-3 sm:gap-4 justify-center">
+              <button
+                onClick={() => setShowLeaveConfirm(false)}
+                className="bg-blue-500 hover:bg-blue-600 text-white font-bold text-sm sm:text-base px-6 sm:px-8 py-2 sm:py-3 rounded-lg transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmLeaveGame}
+                disabled={leaving}
+                className="bg-pink-500 hover:bg-pink-600 text-white font-bold text-sm sm:text-base px-6 sm:px-8 py-2 sm:py-3 rounded-lg transition-all disabled:opacity-50"
+              >
+                {leaving ? 'Leaving...' : 'Leave Game'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Winner Popup */}
       {winnerPopup && winnerPopup.show && (
         <div className="fixed inset-0 bg-blue-600 bg-opacity-95 flex items-center justify-center z-50">

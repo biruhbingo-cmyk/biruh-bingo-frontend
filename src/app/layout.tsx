@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Trial Bingo - Telegram Game',
+  title: 'Biruh - Telegram Game',
   description: 'Play bingo and win exciting prizes!',
 }
 
