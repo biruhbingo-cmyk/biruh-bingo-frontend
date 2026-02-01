@@ -554,7 +554,7 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
         
         {/* 10x10 Cards Grid - Square */}
         <div className="flex justify-center mb-3">
-          <div className="grid grid-cols-10 gap-1 sm:gap-1.5 w-full max-w-[min(90vw,500px)] aspect-square">
+          <div className="grid grid-cols-10 gap-1 sm:gap-1.5 w-full max-w-[360px] aspect-square">
             {CARD_IDS.map((cardId) => {
               const isSelected = selectedCardId === cardId;
               const isTaken = takenCards.has(cardId) && !isSelected;
@@ -581,7 +581,7 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
         {/* Selected Card Preview */}
         {selectedCardData && (
           <div className="flex flex-col items-center mb-3">
-            <div className="bg-blue-700 rounded-lg p-1 sm:p-1.5 w-full max-w-[calc((min(90vw,500px))/2-0.5*0.25rem)] sm:max-w-[calc((min(90vw,500px))/2-0.5*0.375rem)] shadow-lg border-2 border-blue-500">
+            <div className="bg-blue-700 rounded-lg p-1 sm:p-1.5 w-full max-w-[180px] shadow-lg border-2 border-blue-500">
               {/* Header Row - B I N G O */}
               <div className="grid grid-cols-5 gap-1 sm:gap-1.5 mb-1 sm:mb-1.5">
                 {(['B', 'I', 'N', 'G', 'O'] as const).map((letter, idx) => {
