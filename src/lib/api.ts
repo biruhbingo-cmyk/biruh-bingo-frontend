@@ -194,10 +194,12 @@ export const deposit = async (userId: string, amount: number, transactionType: s
   return response.data.transaction;
 };
 
-export const withdraw = async (userId: string, amount: number): Promise<Transaction> => {
+export const withdraw = async (userId: string, amount: number, accountNumber: string, accountType: string): Promise<Transaction> => {
   const response = await axios.post(`${API_URL}/api/v1/wallet/withdraw`, {
     user_id: userId,
     amount,
+    account_number: accountNumber,
+    account_type: accountType,
   });
   return response.data.transaction;
 };

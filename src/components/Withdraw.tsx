@@ -20,7 +20,12 @@ export const WITHDRAW_CONFIG = {
   MIN_REMAINING: 10, // Minimum balance that must remain after withdrawal
 };
 
-const WITHDRAW_TYPES = ['TELEBIRR', 'CBE'];
+// Withdraw types with display names and API values
+// Note: API expects 'Telebirr' (capital T) and 'CBE'
+const WITHDRAW_TYPES = [
+  { value: 'Telebirr', label: 'Telebirr' },
+  { value: 'CBE', label: 'CBE' },
+] as const;
 
 export default function Withdraw({ user, wallet, onWalletUpdate }: WithdrawProps) {
   const { setCurrentView } = useGameStore();
@@ -59,7 +64,7 @@ export default function Withdraw({ user, wallet, onWalletUpdate }: WithdrawProps
     setSubmitting(true);
 
     try {
-      await withdraw(user.id, withdrawAmount);
+      await withdraw(user.id, withdrawAmount, accountNumber.trim(), withdrawType);
       
       // Refresh wallet
       const updatedWallet = await getWalletByTelegramId(user.telegram_id.toString());
@@ -148,8 +153,8 @@ export default function Withdraw({ user, wallet, onWalletUpdate }: WithdrawProps
           >
             <option value="">አይነት ይምረጡ</option>
             {WITHDRAW_TYPES.map((type) => (
-              <option key={type} value={type}>
-                {type}
+              <option key={type.value} value={type.value}>
+                {type.label}
               </option>
             ))}
           </select>
