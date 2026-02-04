@@ -170,11 +170,12 @@ export default function Deposit({ user, wallet, onWalletUpdate }: DepositProps) 
               setPaymentType(e.target.value);
               setTransactionId(''); // Reset transaction ID when payment type changes
             }}
-            className="w-full bg-white text-gray-900 px-4 py-3 rounded-lg text-lg font-semibold"
+            className="w-full bg-white text-gray-900 px-4 py-3 rounded-lg text-lg font-semibold border-0 appearance-none"
+            style={{ backgroundColor: 'white', color: '#111827' }}
           >
-            <option value="">አይነት ይምረጡ</option>
+            <option value="" style={{ backgroundColor: 'white', color: '#111827' }}>አይነት ይምረጡ</option>
             {PAYMENT_TYPES.map((type) => (
-              <option key={type.value} value={type.value}>
+              <option key={type.value} value={type.value} style={{ backgroundColor: 'white', color: '#111827' }}>
                 {type.label}
               </option>
             ))}

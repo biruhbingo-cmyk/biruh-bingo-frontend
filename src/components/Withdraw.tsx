@@ -149,11 +149,12 @@ export default function Withdraw({ user, wallet, onWalletUpdate }: WithdrawProps
               setWithdrawType(e.target.value);
               setAccountNumber(''); // Reset account number when withdraw type changes
             }}
-            className="w-full bg-white text-gray-900 px-4 py-3 rounded-lg text-lg font-semibold"
+            className="w-full bg-white text-gray-900 px-4 py-3 rounded-lg text-lg font-semibold border-0 appearance-none"
+            style={{ backgroundColor: 'white', color: '#111827' }}
           >
-            <option value="">አይነት ይምረጡ</option>
+            <option value="" style={{ backgroundColor: 'white', color: '#111827' }}>አይነት ይምረጡ</option>
             {WITHDRAW_TYPES.map((type) => (
-              <option key={type.value} value={type.value}>
+              <option key={type.value} value={type.value} style={{ backgroundColor: 'white', color: '#111827' }}>
                 {type.label}
               </option>
             ))}
