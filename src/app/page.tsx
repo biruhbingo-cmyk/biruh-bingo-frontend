@@ -7,7 +7,7 @@ import { useGameStore } from '@/store/gameStore';
 import GameSelection from '@/components/GameSelection';
 import CardSelection from '@/components/CardSelection';
 import GamePlay from '@/components/GamePlay';
-import Wallet from '@/components/Wallet';
+import WalletPage from '@/components/Wallet';
 import Deposit from '@/components/Deposit';
 import Withdraw from '@/components/Withdraw';
 import History from '@/components/History';
@@ -103,7 +103,7 @@ function HomeContent() {
   }
 
   if (currentView === 'wallet') {
-    return <Wallet user={user} wallet={wallet} onWalletUpdate={setWallet} />;
+    return <WalletPage user={user} wallet={wallet} onWalletUpdate={setWallet} />;
   }
 
   if (currentView === 'deposit') {
