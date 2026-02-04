@@ -160,3 +160,63 @@ export const getCard = async (cardId: number): Promise<Card> => {
   return response.data.card;
 };
 
+// Transaction interfaces
+export interface Transaction {
+  id: string;
+  user_id: string;
+  type: 'deposit' | 'withdraw' | 'transfer_in' | 'transfer_out';
+  amount: number;
+  status: 'pending' | 'completed' | 'failed' | 'cancelled';
+  transaction_type: string | null;
+  transaction_id: string | null;
+  reference: string | null;
+  created_at: string;
+}
+
+export interface TransferTransaction {
+  transaction: Transaction;
+  to?: {
+    id: string;
+    telegram_id: number;
+    first_name: string;
+    last_name: string | null;
+  };
+}
+
+// Wallet Transaction API
+export const deposit = async (userId: string, amount: number, transactionType: string, transactionId: string): Promise<Transaction> => {
+  const response = await axios.post(`${API_URL}/api/v1/wallet/deposit`, {
+    user_id: userId,
+    amount,
+    transaction_type: transactionType,
+    transaction_id: transactionId,
+  });
+  return response.data.transaction;
+};
+
+export const withdraw = async (userId: string, amount: number): Promise<Transaction> => {
+  const response = await axios.post(`${API_URL}/api/v1/wallet/withdraw`, {
+    user_id: userId,
+    amount,
+  });
+  return response.data.transaction;
+};
+
+export const getDeposits = async (userId: string, all: boolean = false): Promise<Transaction[]> => {
+  const params = all ? { all: 'true' } : {};
+  const response = await axios.get(`${API_URL}/api/v1/wallet/${userId}/deposits`, { params });
+  return response.data.deposits || [];
+};
+
+export const getWithdrawals = async (userId: string, all: boolean = false): Promise<Transaction[]> => {
+  const params = all ? { all: 'true' } : {};
+  const response = await axios.get(`${API_URL}/api/v1/wallet/${userId}/withdrawals`, { params });
+  return response.data.withdrawals || [];
+};
+
+export const getTransfers = async (userId: string, all: boolean = false): Promise<TransferTransaction[]> => {
+  const params = all ? { all: 'true' } : {};
+  const response = await axios.get(`${API_URL}/api/v1/wallet/${userId}/transfers`, { params });
+  return response.data.transfers || [];
+};
+

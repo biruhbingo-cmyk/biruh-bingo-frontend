@@ -7,6 +7,10 @@ import { useGameStore } from '@/store/gameStore';
 import GameSelection from '@/components/GameSelection';
 import CardSelection from '@/components/CardSelection';
 import GamePlay from '@/components/GamePlay';
+import Wallet from '@/components/Wallet';
+import Deposit from '@/components/Deposit';
+import Withdraw from '@/components/Withdraw';
+import History from '@/components/History';
 
 function HomeContent() {
   const searchParams = useSearchParams();
@@ -96,6 +100,22 @@ function HomeContent() {
 
   if (currentView === 'play') {
     return <GamePlay user={user} wallet={wallet} onWalletUpdate={setWallet} />;
+  }
+
+  if (currentView === 'wallet') {
+    return <Wallet user={user} wallet={wallet} onWalletUpdate={setWallet} />;
+  }
+
+  if (currentView === 'deposit') {
+    return <Deposit user={user} wallet={wallet} onWalletUpdate={setWallet} />;
+  }
+
+  if (currentView === 'withdraw') {
+    return <Withdraw user={user} wallet={wallet} onWalletUpdate={setWallet} />;
+  }
+
+  if (currentView === 'history') {
+    return <History user={user} wallet={wallet} />;
   }
 
   // Default to game selection
