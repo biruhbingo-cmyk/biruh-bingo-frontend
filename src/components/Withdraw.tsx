@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { type User, type Wallet, withdraw, getWalletByTelegramId } from '@/lib/api';
+import { useState, useEffect } from 'react';
+import { type User, type Wallet, withdraw, getWalletByTelegramId, getDeposits } from '@/lib/api';
 import { useGameStore } from '@/store/gameStore';
 
 interface WithdrawProps {
@@ -34,11 +34,30 @@ export default function Withdraw({ user, wallet, onWalletUpdate }: WithdrawProps
   const [amount, setAmount] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [hasDeposits, setHasDeposits] = useState<boolean | null>(null); // null = checking, true = has deposits, false = no deposits
+  const [checkingDeposits, setCheckingDeposits] = useState(true);
+
+  // Check if user has at least one deposit
+  useEffect(() => {
+    const checkDeposits = async () => {
+      try {
+        const deposits = await getDeposits(user.id, true); // Check all deposits
+        setHasDeposits(deposits.length > 0);
+      } catch (err) {
+        console.error('Error checking deposits:', err);
+        setHasDeposits(false); // Default to false on error
+      } finally {
+        setCheckingDeposits(false);
+      }
+    };
+
+    checkDeposits();
+  }, [user.id]);
 
   const amountNum = parseFloat(amount) || 0;
   const remainingBalance = wallet.balance - amountNum;
   const isValidAmount = amountNum >= WITHDRAW_CONFIG.MIN_AMOUNT && remainingBalance >= WITHDRAW_CONFIG.MIN_REMAINING;
-  const canWithdraw = withdrawType && accountNumber.trim() !== '' && isValidAmount;
+  const canWithdraw = hasDeposits && withdrawType && accountNumber.trim() !== '' && isValidAmount;
 
   const handleWithdraw = async () => {
     if (!canWithdraw) return;
@@ -138,6 +157,35 @@ export default function Withdraw({ user, wallet, onWalletUpdate }: WithdrawProps
           <p className="text-white font-bold text-2xl">{wallet.balance.toFixed(2)} ETB</p>
         </div>
 
+        {/* Checking Deposits Loading */}
+        {checkingDeposits && (
+          <div className="bg-blue-700 rounded-lg p-4 border-2 border-blue-400 text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
+            <p className="text-blue-200 text-sm">Checking deposit history...</p>
+          </div>
+        )}
+
+        {/* No Deposits Warning */}
+        {!checkingDeposits && !hasDeposits && (
+          <div className="bg-red-500 rounded-lg p-4 border-2 border-red-400">
+            <div className="flex items-center gap-2 mb-2">
+              <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              <h3 className="text-white font-bold text-lg">Withdrawal Not Available</h3>
+            </div>
+            <p className="text-white text-sm">
+              You must make at least one deposit before you can withdraw funds. Please make a deposit first.
+            </p>
+            <button
+              onClick={() => setCurrentView('deposit')}
+              className="mt-3 bg-white text-red-500 font-bold px-4 py-2 rounded-lg hover:bg-red-50 transition-all"
+            >
+              Go to Deposit
+            </button>
+          </div>
+        )}
+
         {/* Withdraw Type Dropdown */}
         <div>
           <label className="block text-white font-bold text-sm sm:text-base mb-2">
@@ -149,7 +197,10 @@ export default function Withdraw({ user, wallet, onWalletUpdate }: WithdrawProps
               setWithdrawType(e.target.value);
               setAccountNumber(''); // Reset account number when withdraw type changes
             }}
-            className="w-full bg-white text-gray-900 px-4 py-3 rounded-lg text-lg font-semibold border-0 appearance-none"
+            disabled={!hasDeposits || checkingDeposits}
+            className={`w-full bg-white text-gray-900 px-4 py-3 rounded-lg text-lg font-semibold border-0 appearance-none ${
+              !hasDeposits || checkingDeposits ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
             style={{ backgroundColor: 'white', color: '#111827' }}
           >
             <option value="" style={{ backgroundColor: 'white', color: '#111827' }}>አይነት ይምረጡ</option>
@@ -172,7 +223,10 @@ export default function Withdraw({ user, wallet, onWalletUpdate }: WithdrawProps
               value={accountNumber}
               onChange={(e) => setAccountNumber(e.target.value)}
               placeholder="Enter account number"
-              className="w-full bg-white text-gray-900 px-4 py-3 rounded-lg text-lg font-semibold"
+              disabled={!hasDeposits || checkingDeposits}
+              className={`w-full bg-white text-gray-900 px-4 py-3 rounded-lg text-lg font-semibold ${
+                !hasDeposits || checkingDeposits ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
             />
           </div>
         )}
@@ -189,7 +243,10 @@ export default function Withdraw({ user, wallet, onWalletUpdate }: WithdrawProps
             placeholder="ያስገቡት የብር መጠን"
             min={WITHDRAW_CONFIG.MIN_AMOUNT}
             max={wallet.balance - WITHDRAW_CONFIG.MIN_REMAINING}
-            className="w-full bg-white text-gray-900 px-4 py-3 rounded-lg text-lg font-semibold"
+            disabled={!hasDeposits || checkingDeposits}
+            className={`w-full bg-white text-gray-900 px-4 py-3 rounded-lg text-lg font-semibold ${
+              !hasDeposits || checkingDeposits ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
           />
           {amount && (
             <div className="mt-2 text-sm">
