@@ -46,23 +46,29 @@ export default function InstructionPage() {
               <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
               </svg>
-              የገንዘብ ማውጫ ሂደት (በ5 ቅደም ተከተሎች)
+              የገንዘብ ማውጫ ሂደት (በ7 ቅደም ተከተሎች)
             </h2>
             <ol className="space-y-3 list-decimal list-inside">
               <li className="pl-2">
                 <strong>መጀመሪያ፦</strong> <code className="bg-blue-600 px-2 py-1 rounded">/withdraw</code> ብለው ይፃፉ።
               </li>
               <li className="pl-2">
-                <strong>ቀሪ ሂሳብዎን ያረጋግጡ፦</strong> ቀሪ ሂሳብዎ በራስ-ሰር ይታያል።
+                <strong>የገንዘብ ማስገቢያ መጠን፦</strong> <span className="text-red-300 font-bold">አስፈላጊ!</span> ለመውጣት ቢያንስ አንድ ጊዜ ገንዘብ ማስገቢያ ማድረግ አለብዎት።
               </li>
               <li className="pl-2">
-                <strong>መጠን ያስገቡ፦</strong> ሊያወጡት የሚፈልጉት መጠን ካለዎት ቀሪ ሂሳብ ያነሰ መሆን አለበት።
+                <strong>የወጪ አይነት ይምረጡ፦</strong> በቴሌብር (Telebirr) ወይም በኢትዮጵያ ንግድ ባንክ (CBE)።
+              </li>
+              <li className="pl-2">
+                <strong>የሂሳብ ቁጥር ያስገቡ፦</strong> ገንዘቡን ለመቀበል የሚፈልጉትን የሂሳብ ቁጥር ያስገቡ።
+              </li>
+              <li className="pl-2">
+                <strong>መጠን ያስገቡ፦</strong> ዝቅተኛው 50 ብር፤ ከመውጣት በኋላ ቢያንስ 10 ብር ቀሪ ሂሳብ መቆየት አለበት።
               </li>
               <li className="pl-2">
                 <strong>ማረጋገጫ፦</strong> የጠየቁት መጠን ወዲያውኑ ከቀሪ ሂሳብዎ ላይ ይቀነሳል።
               </li>
               <li className="pl-2">
-                <strong>ይጠብቁ፦</strong> ጥያቄው ተቀባይነት ካገኘ ገንዘቡ ይላክልዎታል፤ ውድቅ ከተደረገ ግን ወደ ሂሳብዎ ይመለሳል።
+                <strong>ይጠብቁ፦</strong> ጥያቄው በአስተዳዳሪው ተቀባይነት ካገኘ ገንዘቡ ይላክልዎታል፤ ውድቅ ከተደረገ ግን ወደ ሂሳብዎ ይመለሳል።
               </li>
             </ol>
           </section>
