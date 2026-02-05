@@ -29,7 +29,7 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
   const [claimingBingo, setClaimingBingo] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
-  const [winnerPopup, setWinnerPopup] = useState<{ show: boolean; message: string; prize?: number; winnerName?: string } | null>(null);
+  const [winnerPopup, setWinnerPopup] = useState<{ show: boolean; message: string; prize?: number; winnerName?: string; cardId?: number; markedNumbers?: number[] } | null>(null);
   const [wsReconnectKey, setWsReconnectKey] = useState(0);
   const [currentWallet, setCurrentWallet] = useState<Wallet>(wallet);
   
@@ -263,14 +263,19 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
 
           case 'WINNER':
             // Show popup for all players in the game
-            if (message.data.user_id === user.id) {
-              setWinnerPopup({
-                show: true,
-                message: 'Congratulations! You won!',
-                prize: message.data.prize,
-                winnerName: `${user.first_name} ${user.last_name || ''}`.trim(),
-              });
-              
+            const winnerName = message.data.winner_name || message.data.user_name || 'Another player';
+            const isCurrentUser = message.data.user_id === user.id;
+            
+            setWinnerPopup({
+              show: true,
+              message: isCurrentUser ? 'Congratulations! You won!' : `${winnerName} won the game!`,
+              prize: message.data.prize,
+              winnerName: isCurrentUser ? `${user.first_name} ${user.last_name || ''}`.trim() : winnerName,
+              cardId: message.data.card_id,
+              markedNumbers: message.data.marked_numbers,
+            });
+            
+            if (isCurrentUser) {
               // Refresh wallet balance when user wins
               getWalletByTelegramId(user.telegram_id.toString())
                 .then((updatedWallet) => {
@@ -284,20 +289,11 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
                 .catch((err) => {
                   console.error('Error refreshing wallet after win:', err);
                 });
-            } else {
-              // Show winner's name if available, otherwise show generic message
-              const winnerName = message.data.winner_name || message.data.user_name || 'Another player';
-              setWinnerPopup({
-                show: true,
-                message: `${winnerName} won the game!`,
-                prize: message.data.prize,
-                winnerName: winnerName,
-              });
             }
-            // Redirect after 2 seconds
+            // Redirect after 5 seconds (increased to show card)
             setTimeout(() => {
               setCurrentView('selection');
-            }, 2000);
+            }, 5000);
             break;
 
           case 'PLAYER_ELIMINATED':
@@ -433,8 +429,11 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
       if (response.data.winner) {
         setWinnerPopup({
           show: true,
-          message: response.data.message || 'Congratulations! You won!',
+          message: 'Congratulations! You won!',
           prize: response.data.prize,
+          winnerName: `${user.first_name} ${user.last_name || ''}`.trim(),
+          cardId: selectedCardId || undefined,
+          markedNumbers: markedIndices,
         });
         
         // Refresh wallet balance when user wins
@@ -451,10 +450,10 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
             console.error('Error refreshing wallet after bingo win:', err);
           });
         
-        // Redirect after 2 seconds
+        // Redirect after 5 seconds (increased to show card)
         setTimeout(() => {
           setCurrentView('selection');
-        }, 2000);
+        }, 5000);
       } else {
         alert(response.data.message || 'Invalid bingo claim. You have been eliminated.');
         setCurrentView('selection');
@@ -565,7 +564,7 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
   const drawnNumbersSet = new Set(drawnNumbers.map(n => `${n.letter}-${n.number}`));
 
   // Get recent 5 drawn numbers (newest at bottom)
-  const recent5Drawn = [...drawnNumbers].slice(-5).reverse();
+  const recent5Drawn = [...drawnNumbers].slice(-5);
 
   if (!game || !playerCardNumbers) {
     return (
@@ -611,26 +610,106 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
       )}
 
       {/* Winner Popup */}
-      {winnerPopup && winnerPopup.show && (
-        <div className="fixed inset-0 bg-blue-600 bg-opacity-95 flex items-center justify-center z-50">
-          <div className="bg-blue-600 border-2 border-blue-400 rounded-lg p-6 sm:p-8 max-w-md mx-4 text-center shadow-xl">
-            <div className="text-4xl sm:text-6xl mb-4">🎉</div>
-            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-2">
-              {winnerPopup.message}
-            </h2>
-            {winnerPopup.prize && (
-              <p className="text-xl sm:text-2xl font-bold text-yellow-300 mb-4">
-                {winnerPopup.winnerName === `${user.first_name} ${user.last_name || ''}`.trim() 
-                  ? `You won ${winnerPopup.prize} ETB!`
-                  : `${winnerPopup.winnerName} won ${winnerPopup.prize} ETB!`}
+      {winnerPopup && winnerPopup.show && (() => {
+        const winnerCardNumbers = winnerPopup.cardId ? getCardData(winnerPopup.cardId) : null;
+        const markedNumbersArray = winnerPopup.markedNumbers || [];
+        
+        // Convert marked numbers (card numbers like 2, 48, 11, etc.) to card positions
+        // Each number in marked_numbers is the actual number on the bingo card that was marked
+        // We need to find where each number appears on the card and mark that position
+        const markedPositions = new Set<number>();
+        
+        if (winnerCardNumbers && markedNumbersArray.length > 0) {
+          // For each marked number, find its position on the card
+          markedNumbersArray.forEach((cardNumber: number) => {
+            // Skip 0 (center square is always marked)
+            if (cardNumber === 0) {
+              markedPositions.add(12); // Center position (row 2, col 2 = index 12)
+              return;
+            }
+            
+            // Search for this number on the card
+            for (let row = 0; row < 5; row++) {
+              for (let col = 0; col < 5; col++) {
+                if (winnerCardNumbers[row][col] === cardNumber) {
+                  const index = row * 5 + col;
+                  markedPositions.add(index);
+                  return; // Found it, move to next number
+                }
+              }
+            }
+          });
+        }
+        
+        return (
+          <div className="fixed inset-0 bg-blue-600 bg-opacity-95 flex items-center justify-center z-50 overflow-y-auto p-4">
+            <div className="bg-blue-700 border-2 border-blue-400 rounded-lg p-4 sm:p-6 max-w-lg mx-auto text-center shadow-xl">
+              <div className="text-4xl sm:text-6xl mb-4">🎉</div>
+              <h2 className="text-xl sm:text-2xl font-bold text-white mb-2">
+                {winnerPopup.winnerName}
+              </h2>
+              {winnerPopup.prize && (
+                <p className="text-lg sm:text-xl font-bold text-yellow-300 mb-4">
+                  {winnerPopup.winnerName === `${user.first_name} ${user.last_name || ''}`.trim() 
+                    ? `You won ${winnerPopup.prize} ETB!`
+                    : `Won ${winnerPopup.prize} ETB!`}
+                </p>
+              )}
+              
+              {/* Winner's Bingo Card */}
+              {winnerCardNumbers && (
+                <div className="mt-4 mb-4">
+                  <div className="bg-blue-700 rounded-lg p-2 border-2 border-blue-500">
+                    <div className="grid grid-cols-5 gap-0.5">
+                      {/* Header Row */}
+                      {['B', 'I', 'N', 'G', 'O'].map((letter, idx) => {
+                        const colors = ['bg-pink-500', 'bg-green-400', 'bg-blue-500', 'bg-orange-500', 'bg-red-500'];
+                        return (
+                          <div
+                            key={letter}
+                            className={`${colors[idx]} text-white font-bold text-[8px] sm:text-[10px] p-1 rounded text-center shadow-sm`}
+                          >
+                            {letter}
+                          </div>
+                        );
+                      })}
+                      
+                      {/* Card Numbers */}
+                      {winnerCardNumbers.map((row: number[], rowIndex: number) =>
+                        row.map((number: number, colIndex: number) => {
+                          const isCenter = rowIndex === 2 && colIndex === 2 && number === 0;
+                          const index = rowIndex * 5 + colIndex;
+                          const isMarked = markedPositions.has(index) || isCenter;
+                          
+                          return (
+                            <div
+                              key={`${rowIndex}-${colIndex}`}
+                              className={`w-8 h-8 sm:w-10 sm:h-10 rounded border-2 flex items-center justify-center font-black text-[9px] sm:text-[11px] transition-all ${
+                                isCenter || isMarked
+                                  ? 'bg-gray-900 text-white border-gray-800 shadow-inner'
+                                  : 'bg-blue-800 text-white border-blue-500 shadow-sm'
+                              }`}
+                            >
+                              {isCenter ? '#' : number}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                    <div className="text-center mt-1 text-white font-black text-[8px] sm:text-[9px]">
+                      BOARD NUMBER {winnerPopup.cardId}
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              <p className="text-blue-200 text-sm sm:text-base">
+                Redirecting to game selection...
               </p>
-            )}
-            <p className="text-blue-200 text-sm sm:text-base">
-              Redirecting to game selection...
-            </p>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Top Header - Game Info */}
       <div className="bg-blue-700 px-4 sm:px-8 py-2 w-full flex items-center justify-between text-xs sm:text-sm">
@@ -728,7 +807,7 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
                 <div className="text-white text-xs sm:text-sm font-bold mb-2">Recent 5</div>
                 <div className="flex flex-col gap-1.5">
                   {drawnNumbers.length > 0 ? (
-                    [...drawnNumbers].slice(-5).reverse().map((drawn, idx) => {
+                    [...drawnNumbers].slice(-5).map((drawn, idx) => {
                       const colors: Record<string, string> = {
                         'B': 'bg-pink-500',
                         'I': 'bg-green-400',
