@@ -833,7 +833,7 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
                 {/* Player's Bingo Card - At the bottom of this column */}
                 {playerCardNumbers && (
                   <div className="mt-auto pt-4">
-                    <div className="bg-blue-700 rounded-lg p-1 border-2 border-blue-500">
+                    <div className="bg-blue-700 rounded-lg p-1 sm:p-1.5 border-2 border-blue-500">
                       <div className="grid grid-cols-5 gap-0.5">
                         {/* Header Row */}
                         {['B', 'I', 'N', 'G', 'O'].map((letter, idx) => {
@@ -841,7 +841,7 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
                           return (
                             <div
                               key={letter}
-                              className={`${colors[idx]} text-white font-bold text-[7px] p-0.5 rounded text-center shadow-sm`}
+                              className={`${colors[idx]} text-white font-extrabold text-[9px] sm:text-[10px] p-0.5 rounded text-center shadow-sm tracking-wide`}
                             >
                               {letter}
                             </div>
@@ -862,12 +862,14 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
                                 key={`${rowIndex}-${colIndex}`}
                                 onClick={() => !isCenter && isDrawn && handleMarkNumber(letter, number)}
                                 disabled={isCenter || !isDrawn}
-                                className={`w-7 h-7 sm:w-9 sm:h-9 rounded border-2 flex items-center justify-center font-black text-[9px] sm:text-[10px] transition-all ${
+                                className={`w-7 h-7 sm:w-8 sm:h-8 rounded border-2 flex items-center justify-center font-black tabular-nums leading-none text-[10px] sm:text-[11px] transition-all ${
                                   isCenter
                                     ? 'bg-gray-900 text-white border-gray-800 cursor-default shadow-inner'
                                     : isMarked
                                     ? 'bg-gray-900 text-white border-gray-800 shadow-inner'
-                                    : 'bg-blue-800 text-white border-blue-500 cursor-default shadow-sm'
+                                    : isDrawn
+                                    ? 'bg-yellow-500 text-white border-yellow-300 shadow-md'
+                                    : 'bg-blue-900 text-white border-blue-700 cursor-default shadow-sm'
                                 }`}
                               >
                                 {isCenter ? '#' : number}
@@ -876,7 +878,7 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
                           })
                         )}
                       </div>
-                      <div className="text-center mt-0.5 text-white font-black text-[7px] sm:text-[8px]">
+                      <div className="text-center mt-1 text-white font-black text-[8px] sm:text-[9px]">
                         BOARD NUMBER {selectedCardId}
                       </div>
                     </div>
@@ -916,4 +918,3 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
     </main>
   );
 }
-

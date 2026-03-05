@@ -628,9 +628,14 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
       <footer className="p-4 bg-blue-600 border-t border-blue-500/50 flex-shrink-0">
         <button
           onClick={handleJoinGame}
-          disabled={!selectedCardId || joining || game?.state === 'DRAWING'}
+          disabled={
+            !selectedCardId || 
+            joining || 
+            !game || 
+            (game?.state !== 'WAITING' && game?.state !== 'COUNTDOWN')
+          }
           className={`w-full py-2.5 sm:py-3 rounded-lg font-bold text-base sm:text-lg flex items-center justify-center gap-2 transition-all shadow-lg ${
-            selectedCardId && !joining && game?.state !== 'DRAWING'
+            selectedCardId && !joining && game && (game?.state === 'WAITING' || game?.state === 'COUNTDOWN')
               ? 'bg-gradient-to-r from-blue-400 via-blue-500 to-yellow-400 text-white hover:from-blue-500 hover:via-blue-600 hover:to-yellow-500'
               : 'bg-gray-500 text-gray-300 cursor-not-allowed'
           }`}
@@ -643,12 +648,12 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
               </svg>
               <span>Joining...</span>
             </>
-          ) : game?.state === 'DRAWING' ? (
+          ) : !game || (game?.state !== 'WAITING' && game?.state !== 'COUNTDOWN') ? (
             <>
               <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
               </svg>
-              <span>እባክዎ ይጠብቁ</span>
+              <span>እባክህ ትንሽ ይጠብቁ</span>
             </>
           ) : (
             <>
