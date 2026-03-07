@@ -135,6 +135,7 @@ export default function InstructionPage() {
               <div>
                 <h3 className="font-bold text-lg mb-2 text-yellow-200">4. ቢንጎ ለማለት</h3>
                 <p className="pl-2">5 ቁጥሮች በመስመር (አግድም፣ ቀጥ፣ ወይም ሰያፍ) ሲሞሉ "Bingo" ይጫኑ።</p>
+                <p className="pl-2">ወይም 4 ማዕዘን ቁጥሮች (corners) ሲሞሉ እንዲሁ "Bingo" ማለት ይችላሉ።</p>
                 <p className="pl-2">ቀድሞ በትክክል የጠራ ተጫዋች ያሸንፋል።</p>
               </div>
 
@@ -159,4 +160,3 @@ export default function InstructionPage() {
     </main>
   );
 }
-

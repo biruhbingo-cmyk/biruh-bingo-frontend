@@ -58,11 +58,6 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
           setGame(gameState.game);
           if (gameState.drawnNumbers) {
             setDrawnNumbers(gameState.drawnNumbers);
-            // Mark numbers on player's card that have been drawn
-            const drawn = new Set(
-              gameState.drawnNumbers.map(n => `${n.letter}-${n.number}`)
-            );
-            setMarkedNumbers(drawn);
           }
           
           // If selectedCardId is missing, fetch it from the backend
@@ -108,10 +103,6 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
             }
             if (message.data.drawnNumbers) {
               setDrawnNumbers(message.data.drawnNumbers);
-              const drawn = new Set<string>(
-                message.data.drawnNumbers.map((n: DrawnNumber) => `${n.letter}-${n.number}`)
-              );
-              setMarkedNumbers(drawn);
             }
             break;
 
@@ -265,13 +256,22 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
             // Show popup for all players in the game
             const winnerName = message.data.winner_name || message.data.user_name || 'Another player';
             const isCurrentUser = message.data.user_id === user.id;
+            const backendCardId = Number(message.data.card_id ?? message.data.card_number);
+
+            console.log('🏆 WINNER payload from backend', {
+              user_id: message.data.user_id,
+              card_id: message.data.card_id,
+              card_number: message.data.card_number,
+              resolved_card_id: Number.isFinite(backendCardId) ? backendCardId : undefined,
+              marked_numbers: message.data.marked_numbers,
+            });
             
             setWinnerPopup({
               show: true,
               message: isCurrentUser ? 'Congratulations! You won!' : `${winnerName} won the game!`,
               prize: message.data.prize,
               winnerName: isCurrentUser ? `${user.first_name} ${user.last_name || ''}`.trim() : winnerName,
-              cardId: message.data.card_id,
+              cardId: Number.isFinite(backendCardId) ? backendCardId : undefined,
               markedNumbers: message.data.marked_numbers,
             });
             
@@ -385,38 +385,56 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
       return;
     }
 
-    // Verify pattern (simple check - can be enhanced)
-    const markedCount = markedNumbers.size;
-    if (markedCount < 4) {
-      alert('You need to mark at least 4 numbers to claim bingo!');
+    // Convert marked numbers to card position indices (0-24)
+    const markedIndices: number[] = [];
+    for (let row = 0; row < 5; row++) {
+      for (let col = 0; col < 5; col++) {
+        const cardNumber = playerCardNumbers[row][col];
+        const letter = ['B', 'I', 'N', 'G', 'O'][col];
+        const key = `${letter}-${cardNumber}`;
+
+        // Skip center square (always free)
+        if (row === 2 && col === 2 && cardNumber === 0) {
+          continue;
+        }
+
+        if (markedNumbers.has(key)) {
+          markedIndices.push(row * 5 + col);
+        }
+      }
+    }
+
+    // Validate winning patterns:
+    // - Any full row/column/diagonal (center is always treated as marked)
+    // - 4 corners (0, 4, 20, 24)
+    const effectiveMarked = new Set<number>(markedIndices);
+    effectiveMarked.add(12); // free center
+
+    const winningLines = [
+      [0, 1, 2, 3, 4],
+      [5, 6, 7, 8, 9],
+      [10, 11, 12, 13, 14],
+      [15, 16, 17, 18, 19],
+      [20, 21, 22, 23, 24],
+      [0, 5, 10, 15, 20],
+      [1, 6, 11, 16, 21],
+      [2, 7, 12, 17, 22],
+      [3, 8, 13, 18, 23],
+      [4, 9, 14, 19, 24],
+      [0, 6, 12, 18, 24],
+      [4, 8, 12, 16, 20],
+    ];
+    const hasLineWin = winningLines.some((line) => line.every((pos) => effectiveMarked.has(pos)));
+    const hasCornerWin = [0, 4, 20, 24].every((pos) => effectiveMarked.has(pos));
+
+    if (!hasLineWin && !hasCornerWin) {
+      alert('Winning pattern required: full line (row/column/diagonal) or 4 corners.');
       return;
     }
 
     setClaimingBingo(true);
 
     try {
-      // Convert marked numbers to card position indices (0-24)
-      // The card is a 5x5 grid, so we need to find the position of each marked number
-      const markedIndices: number[] = [];
-      
-      for (let row = 0; row < 5; row++) {
-        for (let col = 0; col < 5; col++) {
-          const cardNumber = playerCardNumbers[row][col];
-          const letter = ['B', 'I', 'N', 'G', 'O'][col];
-          const key = `${letter}-${cardNumber}`;
-          
-          // Skip center square (always marked)
-          if (row === 2 && col === 2 && cardNumber === 0) {
-            continue;
-          }
-          
-          // If this number is marked, add its index
-          if (markedNumbers.has(key)) {
-            const index = row * 5 + col;
-            markedIndices.push(index);
-          }
-        }
-      }
 
       const response = await axios.post(
         `${API_URL}/api/v1/games/${currentGameId}/bingo`,
@@ -514,11 +532,6 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
       // Update drawn numbers
       if (gameState.drawnNumbers) {
         setDrawnNumbers(gameState.drawnNumbers);
-        // Mark numbers on player's card that have been drawn
-        const drawn = new Set(
-          gameState.drawnNumbers.map(n => `${n.letter}-${n.number}`)
-        );
-        setMarkedNumbers(drawn);
       }
 
       // Check WebSocket connection and force reconnect if closed
@@ -613,33 +626,48 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
       {winnerPopup && winnerPopup.show && (() => {
         const winnerCardNumbers = winnerPopup.cardId ? getCardData(winnerPopup.cardId) : null;
         const markedNumbersArray = winnerPopup.markedNumbers || [];
-        
-        // Convert marked numbers (card numbers like 2, 48, 11, etc.) to card positions
-        // Each number in marked_numbers is the actual number on the bingo card that was marked
-        // We need to find where each number appears on the card and mark that position
+
+        // Support backend payload variants:
+        // 1) zero-based indices (0-24)
+        // 2) one-based indices (1-25)
+        // 3) actual bingo numbers on the card
         const markedPositions = new Set<number>();
-        
+
         if (winnerCardNumbers && markedNumbersArray.length > 0) {
-          // For each marked number, find its position on the card
-          markedNumbersArray.forEach((cardNumber: number) => {
-            // Skip 0 (center square is always marked)
-            if (cardNumber === 0) {
-              markedPositions.add(12); // Center position (row 2, col 2 = index 12)
-              return;
-            }
-            
-            // Search for this number on the card
-            for (let row = 0; row < 5; row++) {
-              for (let col = 0; col < 5; col++) {
-                if (winnerCardNumbers[row][col] === cardNumber) {
-                  const index = row * 5 + col;
-                  markedPositions.add(index);
-                  return; // Found it, move to next number
+          const values = markedNumbersArray
+            .map((v) => Number(v))
+            .filter((v) => Number.isFinite(v));
+          const isZeroBasedIndices = values.length > 0 && values.every((v) => Number.isInteger(v) && v >= 0 && v <= 24);
+          const isOneBasedIndices = values.length > 0 && values.every((v) => Number.isInteger(v) && v >= 1 && v <= 25);
+
+          if (isZeroBasedIndices) {
+            values.forEach((v) => markedPositions.add(v));
+          } else if (isOneBasedIndices) {
+            values.forEach((v) => markedPositions.add(v - 1));
+          } else {
+            values.forEach((value) => {
+              for (let row = 0; row < 5; row++) {
+                for (let col = 0; col < 5; col++) {
+                  if (winnerCardNumbers[row][col] === value) {
+                    const index = row * 5 + col;
+                    markedPositions.add(index);
+                    return;
+                  }
                 }
               }
-            }
+            });
+          }
+
+          console.log('🏆 WINNER popup mapping', {
+            card_id: winnerPopup.cardId,
+            marked_numbers_raw: markedNumbersArray,
+            format: isZeroBasedIndices ? 'index_0_based' : isOneBasedIndices ? 'index_1_based' : 'card_numbers',
+            mapped_positions: Array.from(markedPositions).sort((a, b) => a - b),
           });
         }
+
+        // Free center is always marked visually
+        markedPositions.add(12);
         
         return (
           <div className="fixed inset-0 bg-blue-600 bg-opacity-95 flex items-center justify-center z-50 overflow-y-auto p-4">
@@ -819,7 +847,7 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
                       return (
                         <div
                           key={`${drawn.letter}-${drawn.number}-${idx}`}
-                          className={`${colors[drawn.letter]} text-white font-bold text-sm sm:text-base px-2 sm:px-3 py-1.5 sm:py-2 rounded text-center border-2 border-white shadow-md`}
+                          className={`${colors[drawn.letter]} text-white font-bold text-sm sm:text-base px-2 sm:px-3 py-1.5 sm:py-2 rounded text-center border-2 border-blue-700 shadow-md`}
                         >
                           {drawn.letter}-{drawn.number}
                         </div>
@@ -868,7 +896,7 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
                                     : isMarked
                                     ? 'bg-gray-900 text-white border-gray-800 shadow-inner'
                                     : isDrawn
-                                    ? 'bg-yellow-500 text-white border-yellow-300 shadow-md'
+                                    ? 'bg-blue-900 text-white border-blue-700 cursor-pointer shadow-sm'
                                     : 'bg-blue-900 text-white border-blue-700 cursor-default shadow-sm'
                                 }`}
                               >
