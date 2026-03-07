@@ -6,10 +6,10 @@ import { API_URL, getGameState, getGames, calculatePotentialWin, checkUserInGame
 import { useGameStore } from '@/store/gameStore';
 import { useGameWebSocket, type WebSocketMessage } from '@/hooks/useSocket';
 import axios from 'axios';
-import { getCardData } from '@/lib/cardData';
+import { cardData, getCardData } from '@/lib/cardData';
 
-// Generate 100 card IDs
-const CARD_IDS = Array.from({ length: 100 }, (_, i) => i + 1);
+// Generate card IDs from available local card data
+const CARD_IDS = Array.from({ length: cardData.length }, (_, i) => i + 1);
 
 interface CardSelectionProps {
   user: User;
@@ -668,4 +668,3 @@ export default function CardSelection({ user, wallet }: CardSelectionProps) {
     </main>
   );
 }
-

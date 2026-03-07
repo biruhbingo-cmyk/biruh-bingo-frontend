@@ -153,7 +153,7 @@ export default function Deposit({ user, wallet, onWalletUpdate }: DepositProps) 
           </h2>
           <div className="text-white text-sm space-y-1">
             <p>• ተቀማጭ የሆነው መጠን እና ወደ ሂሳቡ የላኩት መጠን እኩል መሆን አለባቸው።</p>
-            <p>• ገንዘብ ሲላኩ "Transaction ID" ወይም "FT Number" ያስፈልጋል</p>
+            <p>• ገንዘብ ሲላኩ የመላኪያውን ሙሉ SMS (full SMS) ያስገቡ</p>
             <p>• ዝቅተኛው የገንዘብ መጠን {DEPOSIT_CONFIG.MIN_AMOUNT} ብር ነው</p>
             <p>• ከፍተኛው የገንዘብ መጠን {DEPOSIT_CONFIG.MAX_AMOUNT} ብር ነው</p>
           </div>
@@ -223,18 +223,18 @@ export default function Deposit({ user, wallet, onWalletUpdate }: DepositProps) 
           )}
         </div>
 
-        {/* Transaction ID Field - Only show when payment type is selected */}
+        {/* Full SMS Field - Only show when payment type is selected */}
         {paymentType && (
           <div>
             <label className="block text-white font-bold text-sm sm:text-base mb-2">
-              Transaction ID / FT Number
+              Full Transaction SMS
             </label>
-            <input
-              type="text"
+            <textarea
               value={transactionId}
               onChange={(e) => setTransactionId(e.target.value)}
-              placeholder="Enter transaction ID or FT Number"
-              className="w-full bg-white text-gray-900 px-4 py-3 rounded-lg text-lg font-semibold"
+              placeholder="Paste the full transaction SMS"
+              rows={4}
+              className="w-full bg-white text-gray-900 px-4 py-3 rounded-lg text-base sm:text-lg font-semibold resize-y"
             />
           </div>
         )}
@@ -255,4 +255,3 @@ export default function Deposit({ user, wallet, onWalletUpdate }: DepositProps) 
     </main>
   );
 }
-
