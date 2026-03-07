@@ -740,7 +740,7 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
       })()}
 
       {/* Top Header - Game Info */}
-      <div className="bg-blue-700 px-4 sm:px-8 py-2 w-full flex items-center justify-between text-xs sm:text-sm">
+      <div className="bg-blue-700 px-4 sm:px-8 py-2 flex items-center justify-between text-xs sm:text-sm">
         <div>
           <span className="text-blue-200">Derash: </span>
           <span className="font-bold text-yellow-300">{calculatePotentialWin(game).toFixed(2)} ETB</span>
@@ -779,146 +779,145 @@ export default function GamePlay({ user, wallet, onWalletUpdate }: GamePlayProps
             </div>
           )}
 
-          {/* Main Bingo Board - Called Numbers and Recent 5 Side by Side */}
+          {/* Main Bingo Board */}
           <div className={game.state === 'DRAWING' ? 'lg:col-span-2' : 'lg:col-span-2'}>
-            <div className="flex gap-2 sm:gap-3 h-full">
-              {/* 75 Bingo Numbers Grid */}
-              <div className="flex-1">
-                <div className="bg-blue-700 rounded-lg p-2 border-2 border-blue-500">
-                  <div className="grid grid-cols-5 gap-1">
-                    {['B', 'I', 'N', 'G', 'O'].map((letter, idx) => {
-                      const colors = ['bg-pink-500', 'bg-green-400', 'bg-blue-500', 'bg-orange-500', 'bg-red-500'];
-                      const ranges = [
-                        { start: 1, end: 15 },
-                        { start: 16, end: 30 },
-                        { start: 31, end: 45 },
-                        { start: 46, end: 60 },
-                        { start: 61, end: 75 },
-                      ];
-                      
-                      return (
-                        <div key={letter} className="flex flex-col">
-                          {/* Header */}
-                          <div className={`${colors[idx]} text-white font-bold text-sm p-1.5 rounded mb-1 text-center shadow-md`}>
-                            {letter}
+            <div className="flex flex-col gap-3 h-full">
+              {/* Top: Recent on the left, 75 numbers on the right */}
+              <div className="flex gap-2 sm:gap-3 items-start">
+                {/* 75 Bingo Numbers Grid (Left) */}
+                <div className="flex-1 min-w-0">
+                  <div className="bg-blue-700 rounded-lg p-2 border-2 border-blue-500">
+                    <div className="grid grid-cols-5 gap-y-1 gap-x-0.5">
+                      {['B', 'I', 'N', 'G', 'O'].map((letter, idx) => {
+                        const colors = ['bg-pink-500', 'bg-green-400', 'bg-blue-500', 'bg-orange-500', 'bg-red-500'];
+                        const ranges = [
+                          { start: 1, end: 15 },
+                          { start: 16, end: 30 },
+                          { start: 31, end: 45 },
+                          { start: 46, end: 60 },
+                          { start: 61, end: 75 },
+                        ];
+                        
+                        return (
+                          <div key={letter} className="flex flex-col">
+                            <div className={`${colors[idx]} text-white font-bold text-xs sm:text-sm px-1 py-1 rounded mb-1 text-center shadow-md`}>
+                              {letter}
+                            </div>
+                            <div className="space-y-0.5">
+                              {Array.from({ length: ranges[idx].end - ranges[idx].start + 1 }, (_, i) => {
+                                const number = ranges[idx].start + i;
+                                const key = `${letter}-${number}`;
+                                const isDrawn = drawnNumbersSet.has(key);
+                                
+                                return (
+                                  <div
+                                    key={number}
+                                    className={`text-[10px] sm:text-[11px] font-bold px-1 py-1.5 rounded text-center leading-tight ${
+                                      isDrawn
+                                        ? 'bg-gray-900 text-white shadow-md'
+                                        : 'bg-blue-500 text-white shadow-sm'
+                                    }`}
+                                  >
+                                    {number}
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
-                          {/* Numbers */}
-                          <div className="space-y-0.5">
-                            {Array.from({ length: ranges[idx].end - ranges[idx].start + 1 }, (_, i) => {
-                              const number = ranges[idx].start + i;
-                              const key = `${letter}-${number}`;
-                              const isDrawn = drawnNumbersSet.has(key);
-                              
-                              return (
-                                <div
-                                  key={number}
-                                  className={`text-[11px] sm:text-[12px] font-bold p-1.5 rounded text-center ${
-                                    isDrawn
-                                      ? 'bg-gray-900 text-white shadow-md'
-                                      : 'bg-blue-500 text-white shadow-sm'
-                                  }`}
-                                >
-                                  {number}
-                                </div>
-                              );
-                            })}
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Recent 5 Drawn Numbers (Right) */}
+                <div className="w-28 sm:w-32 md:w-36 flex-shrink-0">
+                  <div className="text-white text-xs sm:text-sm font-bold mb-2">Recent 5</div>
+                  <div className="flex flex-col gap-1.5">
+                    {drawnNumbers.length > 0 ? (
+                      [...drawnNumbers].slice(-5).map((drawn, idx) => {
+                        const colors: Record<string, string> = {
+                          'B': 'bg-pink-500',
+                          'I': 'bg-green-400',
+                          'N': 'bg-blue-500',
+                          'G': 'bg-orange-500',
+                          'O': 'bg-red-500',
+                        };
+                        
+                        return (
+                          <div
+                            key={`${drawn.letter}-${drawn.number}-${idx}`}
+                            className={`${colors[drawn.letter]} text-white font-bold text-sm sm:text-base px-2 sm:px-3 py-1.5 sm:py-2 rounded text-center border-2 border-blue-700 shadow-md`}
+                          >
+                            {drawn.letter}-{drawn.number}
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })
+                    ) : (
+                      <div className="text-blue-200 text-xs sm:text-sm">No numbers drawn yet</div>
+                    )}
                   </div>
                 </div>
               </div>
 
-              {/* Recent 5 Drawn Numbers - Vertical Format with Bingo Card at Bottom */}
-              <div className="flex-shrink-0 flex flex-col h-full">
-                <div className="text-white text-xs sm:text-sm font-bold mb-2">Recent 5</div>
-                <div className="flex flex-col gap-1.5">
-                  {drawnNumbers.length > 0 ? (
-                    [...drawnNumbers].slice(-5).map((drawn, idx) => {
-                      const colors: Record<string, string> = {
-                        'B': 'bg-pink-500',
-                        'I': 'bg-green-400',
-                        'N': 'bg-blue-500',
-                        'G': 'bg-orange-500',
-                        'O': 'bg-red-500',
-                      };
+              {/* Bottom: Bigger Player Bingo Card */}
+              {playerCardNumbers && (
+                <div>
+                  <div className="bg-blue-700 rounded-lg p-2 border-2 border-blue-500 w-fit mx-auto">
+                    <div className="grid grid-cols-5 gap-x-px gap-y-px">
+                      {/* Header Row */}
+                      {['B', 'I', 'N', 'G', 'O'].map((letter, idx) => {
+                        const colors = ['bg-pink-500', 'bg-green-400', 'bg-blue-500', 'bg-orange-500', 'bg-red-500'];
+                        return (
+                          <div
+                            key={letter}
+                            className={`${colors[idx]} w-9 h-9 sm:w-11 sm:h-11 rounded border-2 border-blue-700 flex items-center justify-center text-white font-extrabold text-xs sm:text-sm shadow-sm tracking-wide`}
+                          >
+                            {letter}
+                          </div>
+                        );
+                      })}
                       
-                      return (
-                        <div
-                          key={`${drawn.letter}-${drawn.number}-${idx}`}
-                          className={`${colors[drawn.letter]} text-white font-bold text-sm sm:text-base px-2 sm:px-3 py-1.5 sm:py-2 rounded text-center border-2 border-blue-700 shadow-md`}
-                        >
-                          {drawn.letter}-{drawn.number}
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="text-blue-200 text-xs sm:text-sm">No numbers drawn yet</div>
-                  )}
-                </div>
-                
-                {/* Player's Bingo Card - At the bottom of this column */}
-                {playerCardNumbers && (
-                  <div className="mt-auto pt-4">
-                    <div className="bg-blue-700 rounded-lg p-1 sm:p-1.5 border-2 border-blue-500">
-                      <div className="grid grid-cols-5 gap-0.5">
-                        {/* Header Row */}
-                        {['B', 'I', 'N', 'G', 'O'].map((letter, idx) => {
-                          const colors = ['bg-pink-500', 'bg-green-400', 'bg-blue-500', 'bg-orange-500', 'bg-red-500'];
+                      {/* Card Numbers */}
+                      {playerCardNumbers.map((row: number[], rowIndex: number) =>
+                        row.map((number: number, colIndex: number) => {
+                          const letter = ['B', 'I', 'N', 'G', 'O'][colIndex];
+                          const isCenter = rowIndex === 2 && colIndex === 2 && number === 0;
+                          const key = `${letter}-${number}`;
+                          const isMarked = markedNumbers.has(key);
+                          const isDrawn = drawnNumbersSet.has(key);
+                          
                           return (
-                            <div
-                              key={letter}
-                              className={`${colors[idx]} text-white font-extrabold text-[9px] sm:text-[10px] p-0.5 rounded text-center shadow-sm tracking-wide`}
+                            <button
+                              key={`${rowIndex}-${colIndex}`}
+                              onClick={() => !isCenter && isDrawn && handleMarkNumber(letter, number)}
+                              disabled={isCenter || !isDrawn}
+                              className={`w-9 h-9 sm:w-11 sm:h-11 rounded border-2 flex items-center justify-center font-black tabular-nums leading-none text-xs sm:text-sm transition-all ${
+                                isCenter
+                                  ? 'bg-gray-900 text-white border-gray-800 cursor-default shadow-inner'
+                                  : isMarked
+                                  ? 'bg-gray-900 text-white border-gray-800 shadow-inner'
+                                  : isDrawn
+                                  ? 'bg-blue-900 text-white border-blue-700 cursor-pointer shadow-sm'
+                                  : 'bg-blue-900 text-white border-blue-700 cursor-default shadow-sm'
+                              }`}
                             >
-                              {letter}
-                            </div>
+                              {isCenter ? '#' : number}
+                            </button>
                           );
-                        })}
-                        
-                        {/* Card Numbers */}
-                        {playerCardNumbers.map((row: number[], rowIndex: number) =>
-                          row.map((number: number, colIndex: number) => {
-                            const letter = ['B', 'I', 'N', 'G', 'O'][colIndex];
-                            const isCenter = rowIndex === 2 && colIndex === 2 && number === 0;
-                            const key = `${letter}-${number}`;
-                            const isMarked = markedNumbers.has(key);
-                            const isDrawn = drawnNumbersSet.has(key);
-                            
-                            return (
-                              <button
-                                key={`${rowIndex}-${colIndex}`}
-                                onClick={() => !isCenter && isDrawn && handleMarkNumber(letter, number)}
-                                disabled={isCenter || !isDrawn}
-                                className={`w-7 h-7 sm:w-8 sm:h-8 rounded border-2 flex items-center justify-center font-black tabular-nums leading-none text-[10px] sm:text-[11px] transition-all ${
-                                  isCenter
-                                    ? 'bg-gray-900 text-white border-gray-800 cursor-default shadow-inner'
-                                    : isMarked
-                                    ? 'bg-gray-900 text-white border-gray-800 shadow-inner'
-                                    : isDrawn
-                                    ? 'bg-blue-900 text-white border-blue-700 cursor-pointer shadow-sm'
-                                    : 'bg-blue-900 text-white border-blue-700 cursor-default shadow-sm'
-                                }`}
-                              >
-                                {isCenter ? '#' : number}
-                              </button>
-                            );
-                          })
-                        )}
-                      </div>
-                      <div className="text-center mt-1 text-white font-black text-[8px] sm:text-[9px]">
-                        BOARD NUMBER {selectedCardId}
-                      </div>
+                        })
+                      )}
                     </div>
+
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
 
         {/* Action Buttons */}
-        <div className="mt-1 sm:mt-2 grid grid-cols-3 gap-1 sm:gap-2">
+        <div className="mt-3 sm:mt-4 grid grid-cols-3 gap-1 sm:gap-2">
           <button
             onClick={handleLeaveGame}
             disabled={leaving}
